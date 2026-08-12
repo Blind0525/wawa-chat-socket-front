@@ -31,3 +31,23 @@ export async function chatUploadFileApi(file) {
     })
     return response.data
 }
+
+// ==================== 客服端 ====================
+
+/** 客服/管理员账号登录: {username, password} -> {token, userId, name, userType} */
+export async function chatLoginApi(data) {
+    const response = await chatAxiosInstance.post('/auth/login', data)
+    return response.data
+}
+
+/** 客服自己的会话列表(带顾客信息/最后消息/未读数),需 Bearer token */
+export async function chatMySessionListApi() {
+    const response = await chatAxiosInstance.get('/session/myList')
+    return response.data
+}
+
+/** 标记会话已读(进入会话时调用) */
+export async function chatMarkReadApi(sessionId) {
+    const response = await chatAxiosInstance.post('/message/read', { id: sessionId })
+    return response.data
+}

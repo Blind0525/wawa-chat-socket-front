@@ -40,13 +40,15 @@ export default defineConfig({
         },
     ],
     server: {
-        port: 8082,
+        port: 8083,
         proxy: {
-            // chat 后端 (context-path /chat, 端口 8001)
+            // chat 后端 (context-path /chat, 端口 8801)
+            // ws: true 必须开,聊天消息和通话信令都走 WebSocket
             "/chat": {
-                target: "http://localhost:8001/",
+                target: "http://localhost:8801/",
                 changeOrigin: true,
                 secure: false,
+                ws: true,
             },
         }
     },
