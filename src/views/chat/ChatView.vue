@@ -543,6 +543,13 @@ async function uploadAndSend(file, msgType, extra) {
   try {
     const up = await chatUploadFileApi(file)
     const d = up.data || up
+    // 上传成功立即用真实 Minio URL 替换本地 blob 预览(不等 ws ack,避免 ack 丢失后刷新裂图)
+    if (extra && extra.localId) {
+      const idx = chatMsgs.value.findIndex(m => m.localId === extra.localId)
+      if (idx >= 0 && chatMsgs.value[idx].url && chatMsgs.value[idx].url.startsWith('blob:')) {
+        chatMsgs.value[idx].url = d.url
+      }
+    }
     ws.send(Object.assign({
       type: msgType,
       to: agentUserId,
