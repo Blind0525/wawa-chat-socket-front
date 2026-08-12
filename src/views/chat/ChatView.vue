@@ -203,6 +203,8 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { chatWechatLoginApi, chatGetTenantByDomainApi, chatGetMessagesApi, chatUploadFileApi } from '@/utils/http/ChatApi'
 import { ChatSocket } from '@/utils/ws'
+import { setCache } from '@/utils/LocalCache'
+import { TOKEN } from '@/utils/CacheKey'
 
 // ===== 连接状态 =====
 let ws = null
@@ -333,6 +335,9 @@ async function wechatLoginAndChat(domain, wechatId, name, avatarUrl) {
     sessionId = data.sessionId
     wsToken = data.token
     agentName.value = data.agentName || ''
+
+    // 存 token:历史消息接口 /message/** 需要认证,ChatAxiosInstance 会自动带 Bearer
+    setCache(TOKEN, { token: data.token, userId: data.userId, name: data.name, userType: 'CUSTOMER' })
 
     if (!agentUserId) {
       pageState.value = 'error'
