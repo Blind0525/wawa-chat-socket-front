@@ -193,6 +193,10 @@
       </div>
       <div class="cs-call-timer">{{ callTimer }}</div>
       <div class="cs-call-btns">
+        <template v-if="callType === 'video'">
+          <button class="cs-call-btn cs-call-ctrl" @click="switchCamera">翻转</button>
+          <button class="cs-call-btn cs-call-ctrl" @click="toggleCamera">{{ cameraOn ? '关摄像头' : '开摄像头' }}</button>
+        </template>
         <button class="cs-call-btn cs-call-hangup" @click="hangUpCall">挂 断</button>
       </div>
     </template>
@@ -228,6 +232,8 @@ const callState = ref('idle')   // idle | calling | ringing | incall
 const callType = ref('video')   // audio | video
 const callTimer = ref('00:00')
 const showCallMenu = ref(false) // 通话类型选择弹层
+let cameraFacing = 'user'       // 摄像头朝向: user=前置 environment=后置
+const cameraOn = ref(true)      // 摄像头开关(视频通话中)
 const wsConnected = ref(false)  // 模板按钮禁用状态
 
 // STUN 用于 NAT 打洞;若打洞失败(复杂网络),在 iceServers 里加自建 TURN:
@@ -959,11 +965,51 @@ function hangUpCall() {
   endCall()
 }
 
+/** 翻转摄像头(前置/后置切换),通话中实时生效 */
+async function switchCamera() {
+  if (callType.value !== 'video' || !localStream) return
+  cameraFacing = cameraFacing === 'user' ? 'environment' : 'user'
+  try {
+    const oldTracks = localStream.getVideoTracks()
+    const vs = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing } })
+    const newTrack = vs.getVideoTracks()[0]
+    // 本地流:移除旧 video track 并停止,加入新 track
+    oldTracks.forEach(t => {
+      localStream.removeTrack(t)
+      t.stop()
+    })
+    localStream.addTrack(newTrack)
+    // 发送端:replaceTrack 让对端立即切换
+    if (pc) {
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
+      if (sender) await sender.replaceTrack(newTrack)
+    }
+    // 本地预览刷新
+    const localEl = document.getElementById('local-video')
+    if (localEl && localEl.firstChild) localEl.firstChild.srcObject = localStream
+  } catch (e) {
+    console.error('切换摄像头失败', e)
+    alert('切换摄像头失败: ' + (e.message || e))
+  }
+}
+
+/** 关闭/开启摄像头画面(本地黑屏,对方看到黑画面) */
+function toggleCamera() {
+  if (!localStream) return
+  const tracks = localStream.getVideoTracks()
+  if (tracks.length === 0) return
+  cameraOn.value = !cameraOn.value
+  tracks.forEach(t => { t.enabled = cameraOn.value })
+}
+
 /** 结束通话(清理 RTCPeerConnection + 媒体流,并给通话记录补时长) */
 async function endCall() {
   stopCallTimer()
   callState.value = 'idle'
   pendingOffer = null
+  // 重置摄像头状态
+  cameraOn.value = true
+  cameraFacing = 'user'
   // 通话记录补时长(对方已传时长则保留;未接通/被拒时保持 null 不显示)
   if (callRecordRef && callRecordRef.type === 'call') {
     if (!callRecordRef.duration) {
@@ -1488,6 +1534,7 @@ onUnmounted(() => {
 .cs-call-accept { background: #07c160; }
 .cs-call-decline { background: #ff4d4f; }
 .cs-call-hangup { background: #ff4d4f; }
+.cs-call-ctrl { background: rgba(255, 255, 255, 0.28); min-width: 72px; padding: 12px 16px; }
 .cs-call-videos {
   position: relative;
   width: 100%; flex: 1;
