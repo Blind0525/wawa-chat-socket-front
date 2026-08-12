@@ -264,7 +264,7 @@ onMounted(() => {
   const auth = getCache(TOKEN)
   if (!auth || !auth.token) {
     // 未登录:回客服登录页
-    window.location.href = '/imChat/login'
+    window.location.href = '/socket/login'
     return
   }
   wsToken = auth.token
@@ -615,6 +615,17 @@ function toggleVoiceMode() {
   }
 }
 
+/** 选择浏览器支持的录音格式: mp4 优先(iOS 微信只支持 mp4,不支持 webm) */
+function pickAudioMimeType() {
+  const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+  for (const c of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(c)) return c
+    } catch (e) { /* ignore */ }
+  }
+  return ''
+}
+
 /** 按住开始录音 */
 async function startPressRecord() {
   if (isRecording.value || !wsConnected.value || !peerUserId) return
@@ -625,11 +636,9 @@ async function startPressRecord() {
 
   try {
     const stream = await ensureMicStream()
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm'
+    const mimeType = pickAudioMimeType() || 'audio/webm'
 
-    mediaRecorder = new MediaRecorder(stream, { mimeType })
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) audioChunks.push(event.data)
@@ -656,7 +665,8 @@ async function startPressRecord() {
         return
       }
 
-      const file = new File([blob], `voice_${Date.now()}.webm`, { type: mimeType })
+      const ext = mimeType.includes('mp4') ? 'm4a' : 'webm'
+      const file = new File([blob], `voice_${Date.now()}.${ext}`, { type: mimeType })
       const duration = Math.max(1, Math.round(durationMs / 1000)) // 本地显示用秒
 
       // 本地先显示(blob URL 会话内可播放)
