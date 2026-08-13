@@ -912,12 +912,31 @@ function hangUpCall() {
 /** 翻转摄像头(前置/后置切换),通话中实时生效 */
 async function switchCamera() {
   if (callType.value !== 'video' || !localStream) return
-  cameraFacing = cameraFacing === 'user' ? 'environment' : 'user'
   try {
-    const oldTracks = localStream.getVideoTracks()
-    const vs = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing } })
+    // 枚举摄像头设备,按 deviceId 切到下一个(facingMode 在电脑/部分安卓无对应设备会报错)
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const cams = devices.filter(d => d.kind === 'videoinput')
+    if (cams.length < 2) {
+      alert('未检测到其他摄像头,无法翻转')
+      return
+    }
+    const curTrack = localStream.getVideoTracks()[0]
+    const curDeviceId = (curTrack && curTrack.getSettings && curTrack.getSettings().deviceId) || ''
+    const next = cams.find(c => c.deviceId && c.deviceId !== curDeviceId) || cams[0]
+
+    let vs = null
+    try {
+      vs = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: next.deviceId } } })
+    } catch (e1) {
+      // exact 约束失败(部分微信内核):回退默认摄像头
+      console.log('deviceId 精确切换失败,回退默认摄像头', e1.name)
+      vs = await navigator.mediaDevices.getUserMedia({ video: true })
+    }
     const newTrack = vs.getVideoTracks()[0]
+    if (!newTrack) throw new Error('未获取到摄像头')
+
     // 本地流:移除旧 video track 并停止,加入新 track
+    const oldTracks = localStream.getVideoTracks()
     oldTracks.forEach(t => {
       localStream.removeTrack(t)
       t.stop()
