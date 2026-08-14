@@ -895,57 +895,34 @@ async function getCallMedia() {
   return { stream, videoStream }
 }
 
-/** 本地视频预览(通话中显示自己画面):静态video优先,createObjectURL渲染(X5 srcObject渲染本地流黑屏) */
+/** 本地视频预览:回退到当初能正常显示的方案(混合流srcObject + 动态video),占位仅作兜底 */
 function showLocalPreview(stream) {
   const container = document.getElementById('local-video')
   if (!container) return
-  // 安卓微信 X5 无法本地渲染摄像头流(videoWidth 有数据但画面黑):直接显示占位
-  const isWechatAndroid = /MicroMessenger/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)
-  let v = container.querySelector('video')
-  if (!v) {
-    // 静态 video 被清掉后的兜底:动态创建
-    container.innerHTML = ''
-    v = document.createElement('video')
-    v.autoplay = true
-    v.muted = true
-    v.setAttribute('playsinline', '')
-    v.setAttribute('webkit-playsinline', '')
-    v.setAttribute('x5-playsinline', '')
-    v.setAttribute('x5-video-player-type', 'h5')
-    v.style.width = '100%'
-    v.style.height = '100%'
-    v.style.objectFit = 'cover'
-    v.style.pointerEvents = 'none'
-    container.appendChild(v)
-  }
+  container.innerHTML = ''
+  const v = document.createElement('video')
+  v.autoplay = true
+  v.playsInline = true
   v.muted = true
-  v.style.pointerEvents = 'none'   // 点击穿透到容器(安卓微信X5会拦截video点击)
-  // X5 本地摄像头流:createObjectURL 渲染;无效则 600ms 后换 srcObject 再试
-  try {
-    v.srcObject = null
-    const blobUrl = URL.createObjectURL(stream)
-    v.src = blobUrl
-  } catch (e) {
-    try { v.srcObject = stream } catch (e2) { /* ignore */ }
-  }
+  v.setAttribute('muted', '')
+  v.setAttribute('playsinline', '')
+  v.setAttribute('webkit-playsinline', '')
+  v.style.width = '100%'
+  v.style.height = '100%'
+  v.style.objectFit = 'cover'
+  v.style.pointerEvents = 'none'   // 点击穿透到容器
+  v.srcObject = stream
+  container.appendChild(v)
   const doPlay = () => { v.play().catch(() => { /* ignore */ }) }
   v.onloadedmetadata = doPlay
   setTimeout(doPlay, 100)
+  // 兜底:800ms 后仍无画面(渲染失败)则显示占位
   setTimeout(() => {
-    if (v.videoWidth === 0 || isWechatAndroid) {
-      // 本地渲染失败(安卓X5常见):显示占位,告知摄像头实际在工作
+    if (v.videoWidth === 0) {
       const ph = container.querySelector('.cs-local-placeholder')
       if (ph) ph.classList.add('cs-show')
-      try {
-        v.src = ''
-        v.srcObject = stream
-        doPlay()
-      } catch (e) { /* ignore */ }
-    } else {
-      const ph = container.querySelector('.cs-local-placeholder')
-      if (ph) ph.classList.remove('cs-show')
     }
-  }, 600)
+  }, 800)
 }
 
 /** 点击画面:本地小窗 <-> 远端大画面互换(内联样式强制,兼容安卓微信class切换不生效) */
@@ -966,19 +943,6 @@ function swapPip() {
     remote.style.cssText = ''
     local.style.cssText = ''
   }
-}
-
-/** 本地预览流:clone video track(安卓部分内核原track被WebRTC编码占用,渲染不到帧) */
-function getPreviewStream(stream) {
-  if (!stream) return stream
-  try {
-    const vt = stream.getVideoTracks()[0]
-    if (vt) {
-      const clone = vt.clone()
-      return new MediaStream([clone])
-    }
-  } catch (e) { /* ignore */ }
-  return stream
 }
 
 /** 从选择菜单发起通话 */
@@ -1012,9 +976,9 @@ async function startCall(type) {
     const media = await getCallMedia()
     localStream = media.stream
     localVideoStream = media.videoStream
-    // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
-    if (callType.value === 'video') showLocalPreview(getPreviewStream(localVideoStream || localStream))
+    // 先 addTrack 发送,再渲染本地预览(当初客服端能正常显示的时序)
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+    if (callType.value === 'video') showLocalPreview(localStream)
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -1035,9 +999,9 @@ async function acceptCall() {
     const media = await getCallMedia()
     localStream = media.stream
     localVideoStream = media.videoStream
-    // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
-    if (callType.value === 'video') showLocalPreview(getPreviewStream(localVideoStream || localStream))
+    // 先 addTrack 发送,再渲染本地预览(当初客服端能正常显示的时序)
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+    if (callType.value === 'video') showLocalPreview(localStream)
 
     if (pendingOffer && pendingOffer.sdp) {
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.sdp))
@@ -1102,9 +1066,9 @@ async function switchCamera() {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
       if (sender) await sender.replaceTrack(newTrack)
     }
-    // 本地预览刷新(用新的纯视频流,微信渲染混合流黑屏)
+    // 本地预览刷新(用当前本地流)
     localVideoStream = vs
-    showLocalPreview(getPreviewStream(vs))
+    showLocalPreview(localStream)
   } catch (e) {
     console.error('切换摄像头失败', e)
     alert('切换摄像头失败: ' + (e.message || e))
