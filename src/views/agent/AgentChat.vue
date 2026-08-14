@@ -187,9 +187,9 @@
 
     <!-- 通话中 -->
     <template v-else>
-      <div class="cs-call-videos">
-        <div id="remote-video" class="cs-call-remote"></div>
-        <div id="local-video" v-if="callType === 'video'" class="cs-call-local"></div>
+      <div class="cs-call-videos" :class="{ 'cs-pip-swapped': pipSwapped }">
+        <div id="remote-video" class="cs-call-remote" @click="pipSwapped && swapPip()"></div>
+        <div id="local-video" v-if="callType === 'video'" class="cs-call-local" @click="swapPip"></div>
       </div>
       <div class="cs-call-timer">{{ callTimer }}</div>
       <div class="cs-call-btns">
@@ -234,6 +234,7 @@ const callTimer = ref('00:00')
 const showCallMenu = ref(false) // 通话类型选择弹层
 let cameraFacing = 'user'       // 摄像头朝向: user=前置 environment=后置
 const cameraOn = ref(true)      // 摄像头开关(视频通话中)
+const pipSwapped = ref(false)   // 小窗/大画面互换(点击小窗切换)
 const wsConnected = ref(false)  // 模板按钮禁用状态
 
 // STUN 用于 NAT 打洞;若打洞失败(复杂网络),在 iceServers 里加自建 TURN:
@@ -785,9 +786,11 @@ function createPeer() {
     const v = document.createElement('video')
     v.autoplay = true
     v.playsInline = true
+    v.setAttribute('playsinline', '')
     v.style.width = '100%'
     v.style.height = '100%'
     v.srcObject = remoteStream
+    v.play().catch(() => { /* ignore */ })
     container.appendChild(v)
   }
 
@@ -826,10 +829,20 @@ function showLocalPreview(stream) {
   v.autoplay = true
   v.playsInline = true
   v.muted = true
+  v.setAttribute('muted', '')
+  v.setAttribute('playsinline', '')
   v.style.width = '100%'
   v.style.height = '100%'
   v.srcObject = stream
+  v.play().catch(() => { /* ignore */ })
   container.appendChild(v)
+}
+
+/** 点击小窗:与远端大画面互换(再点换回) */
+function swapPip() {
+  if (callType.value === 'video') {
+    pipSwapped.value = !pipSwapped.value
+  }
 }
 
 /** 从选择菜单发起通话 */
@@ -973,6 +986,7 @@ async function endCall() {
   // 重置摄像头状态
   cameraOn.value = true
   cameraFacing = 'user'
+  pipSwapped.value = false
   // 通话记录补时长(对方已传时长则保留;未接通/被拒时保持 null 不显示)
   if (callRecordRef && callRecordRef.type === 'call') {
     if (!callRecordRef.duration) {
@@ -1525,6 +1539,24 @@ onUnmounted(() => {
 .cs-call-local video {
   width: 100%; height: 100%;
   object-fit: cover;
+}
+/* 点击小窗互换:远端变小窗,本地变全屏 */
+.cs-call-videos.cs-pip-swapped .cs-call-remote {
+  position: absolute; top: 16px; right: 16px;
+  width: 110px; height: 150px;
+  border-radius: 10px; overflow: hidden;
+  background: #000; border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 2;
+}
+.cs-call-videos.cs-pip-swapped .cs-call-remote video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.cs-call-videos.cs-pip-swapped .cs-call-local {
+  position: static; width: 100%; height: 100%;
+  border: none; border-radius: 0; box-shadow: none; z-index: 1;
+}
+.cs-call-videos.cs-pip-swapped .cs-call-local video {
+  width: 100%; height: 100%; object-fit: contain;
 }
 .cs-call-timer {
   font-size: 18px; font-weight: 500;
