@@ -888,6 +888,11 @@ function showLocalPreview(stream) {
       const ph = container.querySelector('.cs-local-placeholder')
       if (ph) ph.classList.remove('cs-show')
     }
+    // 【调试】一次性弹窗确认本地预览状态,确认后移除
+    if (!window.__previewDebugShown) {
+      window.__previewDebugShown = true
+      alert('本地预览: videoWidth=' + v.videoWidth + ' readyState=' + v.readyState + ' srcType=' + (v.src ? 'blob' : 'srcObject'))
+    }
   }, 600)
 }
 
@@ -908,6 +913,13 @@ function swapPip() {
   } else {
     remote.style.cssText = ''
     local.style.cssText = ''
+  }
+  // 【调试】一次性弹窗确认事件触发与布局信息,确认后移除
+  if (!window.__swapDebugShown) {
+    window.__swapDebugShown = true
+    const rs = remote.getBoundingClientRect()
+    const ls = local.getBoundingClientRect()
+    alert('切换触发! 远端=' + Math.round(rs.width) + 'x' + Math.round(rs.height) + ' 本地=' + Math.round(ls.width) + 'x' + Math.round(ls.height) + ' 状态=' + (pipSwapped.value ? '本地大' : '远端大'))
   }
 }
 
