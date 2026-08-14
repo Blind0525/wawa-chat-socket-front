@@ -280,7 +280,7 @@ onMounted(() => {
   const auth = getCache(TOKEN)
   if (!auth || !auth.token) {
     // 未登录:回客服登录页
-    window.location.href = '/socket/login'
+    window.location.href = '/socket2/login'
     return
   }
   wsToken = auth.token

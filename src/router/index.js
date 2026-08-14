@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
-  history: createWebHistory('/socket/'),
+  history: createWebHistory('/socket2/'),
   routes: [
     {
       path: '/',
