@@ -844,6 +844,8 @@ async function getCallMedia() {
 function showLocalPreview(stream) {
   const container = document.getElementById('local-video')
   if (!container) return
+  // 安卓微信 X5 无法本地渲染摄像头流(videoWidth 有数据但画面黑):直接显示占位
+  const isWechatAndroid = /MicroMessenger/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)
   let v = container.querySelector('video')
   if (!v) {
     // 静态 video 被清掉后的兜底:动态创建
@@ -875,7 +877,7 @@ function showLocalPreview(stream) {
   v.onloadedmetadata = doPlay
   setTimeout(doPlay, 100)
   setTimeout(() => {
-    if (v.videoWidth === 0) {
+    if (v.videoWidth === 0 || isWechatAndroid) {
       // 本地渲染失败(安卓X5常见):显示占位,告知摄像头实际在工作
       const ph = container.querySelector('.cs-local-placeholder')
       if (ph) ph.classList.add('cs-show')
@@ -887,11 +889,6 @@ function showLocalPreview(stream) {
     } else {
       const ph = container.querySelector('.cs-local-placeholder')
       if (ph) ph.classList.remove('cs-show')
-    }
-    // 【调试】一次性弹窗确认本地预览状态,确认后移除
-    if (!window.__previewDebugShown) {
-      window.__previewDebugShown = true
-      alert('本地预览: videoWidth=' + v.videoWidth + ' readyState=' + v.readyState + ' srcType=' + (v.src ? 'blob' : 'srcObject'))
     }
   }, 600)
 }
@@ -913,13 +910,6 @@ function swapPip() {
   } else {
     remote.style.cssText = ''
     local.style.cssText = ''
-  }
-  // 【调试】一次性弹窗确认事件触发与布局信息,确认后移除
-  if (!window.__swapDebugShown) {
-    window.__swapDebugShown = true
-    const rs = remote.getBoundingClientRect()
-    const ls = local.getBoundingClientRect()
-    alert('切换触发! 远端=' + Math.round(rs.width) + 'x' + Math.round(rs.height) + ' 本地=' + Math.round(ls.width) + 'x' + Math.round(ls.height) + ' 状态=' + (pipSwapped.value ? '本地大' : '远端大'))
   }
 }
 
