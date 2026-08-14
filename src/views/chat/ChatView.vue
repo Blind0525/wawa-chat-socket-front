@@ -905,20 +905,26 @@ function showLocalPreview(stream) {
   v.style.height = '100%'
   v.style.objectFit = 'cover'
   v.style.pointerEvents = 'none'   // 点击穿透到容器(安卓微信X5会拦截video点击)
-  // 兼容:部分安卓内核 srcObject 支持有问题,回退 createObjectURL
+  // 安卓微信 X5:本地摄像头流用 createObjectURL 渲染(srcObject 渲染本地流黑屏,远端流正常)
+  let blobUrl = null
   try {
-    if ('srcObject' in v) {
-      v.srcObject = stream
-    } else {
-      v.src = URL.createObjectURL(stream)
-    }
+    blobUrl = URL.createObjectURL(stream)
+    v.src = blobUrl
   } catch (e) {
-    v.src = URL.createObjectURL(stream)
+    try { v.srcObject = stream } catch (e2) { /* ignore */ }
   }
   container.appendChild(v)
-  // 等元数据就绪再播放(部分内核直接 play 无效)
-  v.onloadedmetadata = () => { v.play().catch(() => { /* ignore */ }) }
-  setTimeout(() => { v.play().catch(() => { /* ignore */ }) }, 100)
+  const doPlay = () => { v.play().catch(() => { /* ignore */ }) }
+  v.onloadedmetadata = doPlay
+  setTimeout(doPlay, 100)
+  // 500ms 后仍无画面则重新赋值强制刷新(部分内核首次渲染失败)
+  setTimeout(() => {
+    if (v.videoWidth === 0 && blobUrl) {
+      v.src = ''
+      v.src = blobUrl
+      doPlay()
+    }
+  }, 500)
 }
 
 /** 点击画面:本地小窗 <-> 远端大画面互换(再点换回) */
@@ -957,8 +963,9 @@ async function startCall(type) {
     const media = await getCallMedia()
     localStream = media.stream
     localVideoStream = media.videoStream
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+    // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
     if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -979,8 +986,9 @@ async function acceptCall() {
     const media = await getCallMedia()
     localStream = media.stream
     localVideoStream = media.videoStream
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
+    // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
     if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
     if (pendingOffer && pendingOffer.sdp) {
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.sdp))
