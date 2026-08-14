@@ -201,7 +201,6 @@
         <template v-if="callType === 'video'">
           <button class="cs-call-btn cs-call-ctrl" @click="switchCamera">翻转</button>
           <button class="cs-call-btn cs-call-ctrl" @click="toggleCamera">{{ cameraOn ? '关摄像头' : '开摄像头' }}</button>
-          <button class="cs-call-btn cs-call-ctrl" @click="swapPip">切换</button>
         </template>
         <button class="cs-call-btn cs-call-hangup" @click="hangUpCall">挂 断</button>
       </div>
