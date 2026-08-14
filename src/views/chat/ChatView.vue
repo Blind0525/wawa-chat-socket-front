@@ -188,8 +188,11 @@
     <!-- 通话中 -->
     <template v-else>
       <div class="cs-call-videos" :class="{ 'cs-pip-swapped': pipSwapped }">
-        <div id="remote-video" class="cs-call-remote" @click="swapPip"></div>
-        <div id="local-video" v-if="callType === 'video'" class="cs-call-local" @click="swapPip"></div>
+        <div id="remote-video" class="cs-call-remote" @click="swapPip" @touchend.prevent="swapPip"></div>
+        <div id="local-video" v-if="callType === 'video'" class="cs-call-local" @click="swapPip" @touchend.prevent="swapPip">
+          <!-- 静态 video:安卓微信X5对动态创建的video渲染MediaStream不稳定 -->
+          <video autoplay muted playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5" class="cs-local-video-el"></video>
+        </div>
       </div>
       <div class="cs-call-timer">{{ callTimer }}</div>
       <div class="cs-call-btns">
@@ -890,41 +893,50 @@ async function getCallMedia() {
   return { stream, videoStream }
 }
 
-/** 本地视频预览(通话中显示自己画面):传纯视频流,微信内核渲染混合流会黑屏 */
+/** 本地视频预览(通话中显示自己画面):静态video优先,createObjectURL渲染(X5 srcObject渲染本地流黑屏) */
 function showLocalPreview(stream) {
   const container = document.getElementById('local-video')
   if (!container) return
-  container.innerHTML = ''
-  const v = document.createElement('video')
-  v.autoplay = true
+  let v = container.querySelector('video')
+  if (!v) {
+    // 静态 video 被清掉后的兜底:动态创建
+    container.innerHTML = ''
+    v = document.createElement('video')
+    v.autoplay = true
+    v.muted = true
+    v.setAttribute('playsinline', '')
+    v.setAttribute('webkit-playsinline', '')
+    v.setAttribute('x5-playsinline', '')
+    v.setAttribute('x5-video-player-type', 'h5')
+    v.style.width = '100%'
+    v.style.height = '100%'
+    v.style.objectFit = 'cover'
+    v.style.pointerEvents = 'none'
+    container.appendChild(v)
+  }
   v.muted = true
-  v.setAttribute('muted', '')
-  v.setAttribute('playsinline', '')
-  v.setAttribute('webkit-playsinline', '')
-  v.style.width = '100%'
-  v.style.height = '100%'
-  v.style.objectFit = 'cover'
   v.style.pointerEvents = 'none'   // 点击穿透到容器(安卓微信X5会拦截video点击)
-  // 安卓微信 X5:本地摄像头流用 createObjectURL 渲染(srcObject 渲染本地流黑屏,远端流正常)
+  // X5 本地摄像头流:createObjectURL 渲染;无效则 600ms 后换 srcObject 再试
   let blobUrl = null
   try {
+    v.srcObject = null
     blobUrl = URL.createObjectURL(stream)
     v.src = blobUrl
   } catch (e) {
     try { v.srcObject = stream } catch (e2) { /* ignore */ }
   }
-  container.appendChild(v)
   const doPlay = () => { v.play().catch(() => { /* ignore */ }) }
   v.onloadedmetadata = doPlay
   setTimeout(doPlay, 100)
-  // 500ms 后仍无画面则重新赋值强制刷新(部分内核首次渲染失败)
   setTimeout(() => {
-    if (v.videoWidth === 0 && blobUrl) {
-      v.src = ''
-      v.src = blobUrl
-      doPlay()
+    if (v.videoWidth === 0) {
+      try {
+        v.src = ''
+        v.srcObject = stream
+        doPlay()
+      } catch (e) { /* ignore */ }
     }
-  }, 500)
+  }, 600)
 }
 
 /** 点击画面:本地小窗 <-> 远端大画面互换(再点换回) */
