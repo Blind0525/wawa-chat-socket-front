@@ -939,9 +939,37 @@ function showLocalPreview(stream) {
   }, 600)
 }
 
-/** 点击画面:本地小窗 <-> 远端大画面互换(再点换回) */
+/** 点击画面:本地小窗 <-> 远端大画面互换(内联样式强制,兼容安卓微信class切换不生效) */
 function swapPip() {
   pipSwapped.value = !pipSwapped.value
+  const remote = document.getElementById('remote-video')
+  const local = document.getElementById('local-video')
+  if (!remote || !local) return
+  if (pipSwapped.value) {
+    // 本地变大,远端变小窗
+    remote.style.cssText = 'position:absolute;top:16px;right:16px;width:110px;height:150px;border-radius:10px;overflow:hidden;background:#000;border:1px solid rgba(255,255,255,.3);box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:2'
+    const rv = remote.querySelector('video')
+    if (rv) rv.style.objectFit = 'cover'
+    local.style.cssText = 'width:100%;height:100%;border:none;border-radius:0;box-shadow:none;z-index:1'
+    const lv = local.querySelector('video')
+    if (lv) lv.style.objectFit = 'contain'
+  } else {
+    remote.style.cssText = ''
+    local.style.cssText = ''
+  }
+}
+
+/** 本地预览流:clone video track(安卓部分内核原track被WebRTC编码占用,渲染不到帧) */
+function getPreviewStream(stream) {
+  if (!stream) return stream
+  try {
+    const vt = stream.getVideoTracks()[0]
+    if (vt) {
+      const clone = vt.clone()
+      return new MediaStream([clone])
+    }
+  } catch (e) { /* ignore */ }
+  return stream
 }
 
 /** 从选择菜单发起通话 */
@@ -976,7 +1004,7 @@ async function startCall(type) {
     localStream = media.stream
     localVideoStream = media.videoStream
     // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
-    if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
+    if (callType.value === 'video') showLocalPreview(getPreviewStream(localVideoStream || localStream))
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
     const offer = await pc.createOffer()
@@ -999,7 +1027,7 @@ async function acceptCall() {
     localStream = media.stream
     localVideoStream = media.videoStream
     // 先渲染本地预览再 addTrack 发送(部分安卓内核先发送后渲染本地会黑屏)
-    if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
+    if (callType.value === 'video') showLocalPreview(getPreviewStream(localVideoStream || localStream))
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
 
     if (pendingOffer && pendingOffer.sdp) {
@@ -1067,7 +1095,7 @@ async function switchCamera() {
     }
     // 本地预览刷新(用新的纯视频流,微信渲染混合流黑屏)
     localVideoStream = vs
-    showLocalPreview(vs)
+    showLocalPreview(getPreviewStream(vs))
   } catch (e) {
     console.error('切换摄像头失败', e)
     alert('切换摄像头失败: ' + (e.message || e))
