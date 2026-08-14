@@ -188,7 +188,7 @@
     <!-- 通话中 -->
     <template v-else>
       <div class="cs-call-videos" :class="{ 'cs-pip-swapped': pipSwapped }">
-        <div id="remote-video" class="cs-call-remote" @click="pipSwapped && swapPip()"></div>
+        <div id="remote-video" class="cs-call-remote" @click="swapPip"></div>
         <div id="local-video" v-if="callType === 'video'" class="cs-call-local" @click="swapPip"></div>
       </div>
       <div class="cs-call-timer">{{ callTimer }}</div>
@@ -222,7 +222,8 @@ let historyLoading = false
 
 // ===== 音视频通话状态(原生 WebRTC + ws 信令) =====
 let pc = null                 // RTCPeerConnection
-let localStream = null        // 通话本地媒体流
+let localStream = null        // 通话本地媒体流(发送用混合流)
+let localVideoStream = null   // 本地预览用纯视频流(微信渲染混合流黑屏)
 let extraMediaStreams = []    // 通话用 getUserMedia 原生流(结束时统一释放)
 let callTimerInterval = null
 let callSeconds = 0
@@ -802,22 +803,24 @@ function createPeer() {
   return pc
 }
 
-/** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案) */
+/** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案)
+ *  返回 { stream: 发送用混合流, videoStream: 纯视频流(本地预览用,微信渲染混合流会黑屏) } */
 async function getCallMedia() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   extraMediaStreams.push(stream)
+  let videoStream = null
   if (callType.value === 'video') {
     try {
-      const vs = await navigator.mediaDevices.getUserMedia({ video: true })
-      extraMediaStreams.push(vs)
-      vs.getVideoTracks().forEach(t => stream.addTrack(t))
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: true })
+      extraMediaStreams.push(videoStream)
+      videoStream.getVideoTracks().forEach(t => stream.addTrack(t))
     } catch (e) {
       console.error('摄像头获取失败', e)
       alert('无法访问摄像头,请检查摄像头权限: ' + (e && e.message || '未知错误'))
       throw e
     }
   }
-  return stream
+  return { stream, videoStream }
 }
 
 /** 本地视频预览(通话中显示自己画面) */
@@ -831,6 +834,7 @@ function showLocalPreview(stream) {
   v.muted = true
   v.setAttribute('muted', '')
   v.setAttribute('playsinline', '')
+  v.setAttribute('webkit-playsinline', '')
   v.style.width = '100%'
   v.style.height = '100%'
   v.srcObject = stream
@@ -838,11 +842,9 @@ function showLocalPreview(stream) {
   container.appendChild(v)
 }
 
-/** 点击小窗:与远端大画面互换(再点换回) */
+/** 点击画面:本地小窗 <-> 远端大画面互换(再点换回) */
 function swapPip() {
-  if (callType.value === 'video') {
-    pipSwapped.value = !pipSwapped.value
-  }
+  pipSwapped.value = !pipSwapped.value
 }
 
 /** 从选择菜单发起通话 */
@@ -873,9 +875,11 @@ async function startCall(type) {
 
   try {
     createPeer()
-    localStream = await getCallMedia()
+    const media = await getCallMedia()
+    localStream = media.stream
+    localVideoStream = media.videoStream
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
-    if (callType.value === 'video') showLocalPreview(localStream)
+    if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -893,9 +897,11 @@ async function acceptCall() {
   startCallTimer()
   try {
     createPeer()
-    localStream = await getCallMedia()
+    const media = await getCallMedia()
+    localStream = media.stream
+    localVideoStream = media.videoStream
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream))
-    if (callType.value === 'video') showLocalPreview(localStream)
+    if (callType.value === 'video') showLocalPreview(localVideoStream || localStream)
 
     if (pendingOffer && pendingOffer.sdp) {
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.sdp))
@@ -960,9 +966,9 @@ async function switchCamera() {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video')
       if (sender) await sender.replaceTrack(newTrack)
     }
-    // 本地预览刷新
-    const localEl = document.getElementById('local-video')
-    if (localEl && localEl.firstChild) localEl.firstChild.srcObject = localStream
+    // 本地预览刷新(用新的纯视频流,微信渲染混合流黑屏)
+    localVideoStream = vs
+    showLocalPreview(vs)
   } catch (e) {
     console.error('切换摄像头失败', e)
     alert('切换摄像头失败: ' + (e.message || e))
@@ -998,6 +1004,7 @@ async function endCall() {
     try { localStream.getTracks().forEach(t => t.stop()) } catch (e) { /* ignore */ }
     localStream = null
   }
+  localVideoStream = null
   // 释放分步获取的原生媒体流(麦克风/摄像头指示灯熄灭)
   if (extraMediaStreams.length > 0) {
     extraMediaStreams.forEach(s => { try { s.getTracks().forEach(t => t.stop()) } catch (e) { /* ignore */ } })
@@ -1521,6 +1528,7 @@ onUnmounted(() => {
 .cs-call-remote {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
 }
 .cs-call-remote video {
   width: 100%; height: 100%;
@@ -1535,6 +1543,7 @@ onUnmounted(() => {
   border: 1px solid rgba(255,255,255,0.3);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   z-index: 2;
+  cursor: pointer;
 }
 .cs-call-local video {
   width: 100%; height: 100%;
