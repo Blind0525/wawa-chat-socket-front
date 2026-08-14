@@ -790,9 +790,20 @@ function createPeer() {
     v.setAttribute('playsinline', '')
     v.style.width = '100%'
     v.style.height = '100%'
-    v.srcObject = remoteStream
-    v.play().catch(() => { /* ignore */ })
+    v.style.pointerEvents = 'none'
+    // 兼容:部分安卓内核 srcObject 支持有问题,回退 createObjectURL
+    try {
+      if ('srcObject' in v) {
+        v.srcObject = remoteStream
+      } else {
+        v.src = URL.createObjectURL(remoteStream)
+      }
+    } catch (e) {
+      v.src = URL.createObjectURL(remoteStream)
+    }
     container.appendChild(v)
+    v.onloadedmetadata = () => { v.play().catch(() => { /* ignore */ }) }
+    setTimeout(() => { v.play().catch(() => { /* ignore */ }) }, 100)
   }
 
   pc.onconnectionstatechange = () => {
@@ -830,16 +841,28 @@ function showLocalPreview(stream) {
   container.innerHTML = ''
   const v = document.createElement('video')
   v.autoplay = true
-  v.playsInline = true
   v.muted = true
   v.setAttribute('muted', '')
   v.setAttribute('playsinline', '')
   v.setAttribute('webkit-playsinline', '')
   v.style.width = '100%'
   v.style.height = '100%'
-  v.srcObject = stream
-  v.play().catch(() => { /* ignore */ })
+  v.style.objectFit = 'cover'
+  v.style.pointerEvents = 'none'   // 点击穿透到容器(安卓微信X5会拦截video点击)
+  // 兼容:部分安卓内核 srcObject 支持有问题,回退 createObjectURL
+  try {
+    if ('srcObject' in v) {
+      v.srcObject = stream
+    } else {
+      v.src = URL.createObjectURL(stream)
+    }
+  } catch (e) {
+    v.src = URL.createObjectURL(stream)
+  }
   container.appendChild(v)
+  // 等元数据就绪再播放(部分内核直接 play 无效)
+  v.onloadedmetadata = () => { v.play().catch(() => { /* ignore */ }) }
+  setTimeout(() => { v.play().catch(() => { /* ignore */ }) }, 100)
 }
 
 /** 点击画面:本地小窗 <-> 远端大画面互换(再点换回) */
@@ -1533,6 +1556,7 @@ onUnmounted(() => {
 .cs-call-remote video {
   width: 100%; height: 100%;
   object-fit: contain;
+  pointer-events: none;
 }
 .cs-call-local {
   position: absolute; top: 16px; right: 16px;
@@ -1548,6 +1572,7 @@ onUnmounted(() => {
 .cs-call-local video {
   width: 100%; height: 100%;
   object-fit: cover;
+  pointer-events: none;
 }
 /* 点击小窗互换:远端变小窗,本地变全屏 */
 .cs-call-videos.cs-pip-swapped .cs-call-remote {
