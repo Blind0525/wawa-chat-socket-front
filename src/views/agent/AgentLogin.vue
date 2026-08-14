@@ -19,6 +19,8 @@ import { setCache } from '@/utils/LocalCache'
 import { TOKEN } from '@/utils/CacheKey'
 
 const router = useRouter()
+// 【调试】确认客服端入口版本,确认后移除
+alert('[客服端] 登录页已加载 URL=' + location.href + ' 版本=带切换按钮版')
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
