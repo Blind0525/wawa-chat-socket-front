@@ -192,6 +192,8 @@
         <div id="local-video" v-if="callType === 'video'" class="cs-call-local" @click="swapPip" @touchend.prevent="swapPip">
           <!-- 静态 video:安卓微信X5对动态创建的video渲染MediaStream不稳定 -->
           <video autoplay muted playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5" class="cs-local-video-el"></video>
+          <!-- 本地渲染失败时的占位(摄像头工作正常,仅X5无法本地预览) -->
+          <div class="cs-local-placeholder">📷 摄像头已开启</div>
         </div>
       </div>
       <div class="cs-call-timer">{{ callTimer }}</div>
@@ -199,6 +201,7 @@
         <template v-if="callType === 'video'">
           <button class="cs-call-btn cs-call-ctrl" @click="switchCamera">翻转</button>
           <button class="cs-call-btn cs-call-ctrl" @click="toggleCamera">{{ cameraOn ? '关摄像头' : '开摄像头' }}</button>
+          <button class="cs-call-btn cs-call-ctrl" @click="swapPip">切换</button>
         </template>
         <button class="cs-call-btn cs-call-hangup" @click="hangUpCall">挂 断</button>
       </div>
@@ -930,11 +933,17 @@ function showLocalPreview(stream) {
   setTimeout(doPlay, 100)
   setTimeout(() => {
     if (v.videoWidth === 0) {
+      // 本地渲染失败(安卓X5常见):显示占位,告知摄像头实际在工作
+      const ph = container.querySelector('.cs-local-placeholder')
+      if (ph) ph.classList.add('cs-show')
       try {
         v.src = ''
         v.srcObject = stream
         doPlay()
       } catch (e) { /* ignore */ }
+    } else {
+      const ph = container.querySelector('.cs-local-placeholder')
+      if (ph) ph.classList.remove('cs-show')
     }
   }, 600)
 }
@@ -1645,7 +1654,8 @@ onUnmounted(() => {
 .cs-call-accept { background: #07c160; }
 .cs-call-decline { background: #ff4d4f; }
 .cs-call-hangup { background: #ff4d4f; }
-.cs-call-ctrl { background: rgba(255, 255, 255, 0.28); min-width: 72px; padding: 12px 16px; }
+.cs-call-ctrl { background: rgba(255, 255, 255, 0.28); min-width: 64px; padding: 10px 12px; font-size: 13px; }
+.cs-call-btns { gap: 14px; }
 .cs-call-videos {
   position: relative;
   width: 100%; flex: 1;
@@ -1678,6 +1688,18 @@ onUnmounted(() => {
   object-fit: cover;
   pointer-events: none;
 }
+/* 本地渲染失败占位(摄像头正常,仅X5无法本地预览时显示) */
+.cs-local-placeholder {
+  position: absolute; inset: 0;
+  display: none;
+  align-items: center; justify-content: center;
+  background: #111;
+  color: rgba(255,255,255,0.75);
+  font-size: 12px;
+  z-index: 3;
+  pointer-events: none;
+}
+.cs-local-placeholder.cs-show { display: flex; }
 /* 点击小窗互换:远端变小窗,本地变全屏 */
 .cs-call-videos.cs-pip-swapped .cs-call-remote {
   position: absolute; top: 16px; right: 16px;
