@@ -14,13 +14,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { chatLoginApi } from '@/utils/http/ChatApi'
+import { chatLoginApi, chatRegisterDeviceApi } from '@/utils/http/ChatApi'
 import { setCache } from '@/utils/LocalCache'
 import { TOKEN } from '@/utils/CacheKey'
 
 const router = useRouter()
-// 【调试】确认客服端入口版本,确认后移除
-alert('[客服端] 登录页已加载 URL=' + location.href + ' 版本=带切换按钮版')
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -42,6 +40,8 @@ async function doLogin() {
     }
     // 存登录信息(token + userId),ChatAxiosInstance 自动带 Bearer 头
     setCache(TOKEN, { token: data.token, userId: data.userId, name: data.name, userType: data.userType })
+    // App 壳(uni-app web-view)内:上报极光推送设备 token;微信/浏览器里没有 pushId 参数,自动跳过
+    reportDevice()
     router.replace('/agent')
   } catch (e) {
     const msg = (e.response && e.response.data && (e.response.data.message || e.response.data.msg))
@@ -49,6 +49,28 @@ async function doLogin() {
     errorText.value = msg
   } finally {
     loading.value = false
+  }
+}
+
+/** 读 URL 参数(壳注入的 pushId / platform) */
+function getUrlParam(name) {
+  try {
+    return new URLSearchParams(location.search).get(name) || ''
+  } catch (e) {
+    return ''
+  }
+}
+
+/** 极光设备上报:失败不影响登录,静默跳过 */
+async function reportDevice() {
+  try {
+    const pushId = getUrlParam('pushId')
+    if (!pushId) return
+    const platform = getUrlParam('platform') || 'android'
+    await chatRegisterDeviceApi({ deviceToken: pushId, platform })
+    console.log('[device] 推送设备上报成功:', platform, pushId)
+  } catch (e) {
+    console.log('[device] 推送设备上报失败:', e)
   }
 }
 </script>

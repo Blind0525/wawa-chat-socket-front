@@ -51,3 +51,9 @@ export async function chatMarkReadApi(sessionId) {
     const response = await chatAxiosInstance.post('/message/read', { id: sessionId })
     return response.data
 }
+
+/** 上报设备 token(极光 registrationId);App 壳(uni-app web-view)登录后调用 */
+export async function chatRegisterDeviceApi(data) {
+    const response = await chatAxiosInstance.post('/device/register', data)
+    return response.data
+}
