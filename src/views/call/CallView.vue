@@ -40,6 +40,8 @@
       </template>
       <!-- 语音通话:只显示名字 + 计时 + 挂断按钮(无小窗) -->
       <template v-else>
+        <!-- 隐藏的远端媒体容器:语音通话也要播放对端音频(ontrack 依赖此容器) -->
+        <div id="remote-video" style="display:none"></div>
         <div class="call-avatar">📞</div>
         <div class="call-title">{{ customerName || '顾客' }}</div>
         <div class="call-subtitle">{{ callTimer }}</div>

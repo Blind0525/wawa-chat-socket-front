@@ -274,8 +274,6 @@ let audioChunks = []
 const preview = ref({ show: false, type: 'image', url: '' })
 
 onMounted(() => {
-  // 【调试】确认客服端聊天页版本,确认后移除
-  alert('[客服端] 聊天页已加载 URL=' + location.href + ' 版本=带切换按钮版')
   const auth = getCache(TOKEN)
   if (!auth || !auth.token) {
     // 未登录:回客服登录页
