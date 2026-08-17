@@ -487,21 +487,25 @@ function formatMsg(m) {
   }
 }
 
-/** 首次加载历史消息(后端时间正序分页:取最后一页=最新消息) */
+/** 首次加载历史消息(后端时间正序分页:加载最后两页取最后30条,最后一页不满30条时凑数) */
 async function loadHistoryMessages() {
   if (!sessionId) return
   try {
-    const first = await chatGetMessagesApi({ sessionId, page: { page: 1, size: 30 } })
+    const size = 30
+    const first = await chatGetMessagesApi({ sessionId, page: { page: 1, size } })
     const pd0 = first.data || {}
     const total = pd0.total || 0
-    const size = 30
-    const lastPage = Math.max(1, Math.ceil(total / size))
-    const res = lastPage === 1 ? first : await chatGetMessagesApi({ sessionId, page: { page: lastPage, size } })
-    const pd = res.data || {}
-    const list = pd.list || []
+    const pages = Math.max(1, Math.ceil(total / size))
+    const pageNums = pages >= 2 ? [pages - 1, pages] : [pages]
+    const all = []
+    for (const p of pageNums) {
+      const res = await chatGetMessagesApi({ sessionId, page: { page: p, size } })
+      all.push(...((res.data || {}).list || []))
+    }
+    const list = all.slice(-size)
     chatMsgs.value = list.map(formatMsg).filter(Boolean)
-    historyPage = lastPage
-    historyHasMore = lastPage > 1
+    historyPage = pages >= 2 ? pages - 1 : pages
+    historyHasMore = historyPage > 1
   } catch (e) {
     console.log('加载历史消息失败', e.message)
   }
