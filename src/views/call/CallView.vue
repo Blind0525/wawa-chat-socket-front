@@ -196,6 +196,7 @@ export default {
         const v = document.createElement('video')
         v.autoplay = true
         v.playsInline = true
+        v.muted = false
         v.setAttribute('playsinline', '')
         v.style.width = '100%'
         v.style.height = '100%'
@@ -210,15 +211,51 @@ export default {
           v.src = URL.createObjectURL(remoteStream)
         }
         container.appendChild(v)
-        v.onloadedmetadata = () => { v.play().catch(() => { /* ignore */ }) }
-        setTimeout(() => { v.play().catch(() => { /* ignore */ }) }, 100)
+        // 自动播放可能被无手势策略拦截(web-view 页面),失败时提示点击启用声音
+        const tryPlay = () => {
+          const p = v.play()
+          if (p && p.catch) {
+            p.catch(() => {
+              container.classList.add('need-gesture')
+            })
+          } else {
+            container.classList.remove('need-gesture')
+          }
+        }
+        v.onloadedmetadata = tryPlay
+        setTimeout(tryPlay, 100)
+        setTimeout(tryPlay, 500)
+        container.addEventListener('click', () => {
+          tryPlay()
+          container.classList.remove('need-gesture')
+        })
+        container.addEventListener('touchend', () => {
+          tryPlay()
+          container.classList.remove('need-gesture')
+        })
       }
 
       this.pc.onconnectionstatechange = () => {
-        if (this.pc && (this.pc.connectionState === 'failed' || this.pc.connectionState === 'disconnected')) {
+        if (!this.pc) return
+        const st = this.pc.connectionState
+        if (st === 'failed') {
           this.endText = '连接已断开'
           this.endCall()
           this.callState = 'ended'
+        } else if (st === 'disconnected') {
+          // 网络抖动:给 8 秒恢复窗口,避免误挂断
+          if (!this.recoverTimer) {
+            this.recoverTimer = setTimeout(() => {
+              if (this.pc && this.pc.connectionState === 'disconnected') {
+                this.endText = '连接已断开'
+                this.endCall()
+                this.callState = 'ended'
+              }
+              this.recoverTimer = null
+            }, 8000)
+          }
+        } else if (st === 'connected') {
+          if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
         }
       }
       return this.pc
@@ -410,6 +447,7 @@ export default {
     /** 结束通话(清理 RTCPeerConnection + 媒体流) */
     endCall() {
       this.stopCallTimer()
+      if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
       this.pendingOffer = null
       this.cameraOn = true
       this.pipSwapped = false
@@ -494,6 +532,15 @@ export default {
 .call-remote {
   position: absolute; inset: 0;
   background: #000;
+}
+.call-remote.need-gesture::after {
+  content: '点击画面启用声音';
+  position: absolute; left: 0; right: 0; bottom: 30%;
+  text-align: center;
+  color: #fff;
+  font-size: 14px;
+  background: rgba(0,0,0,0.4);
+  padding: 8px 0;
 }
 .call-local {
   position: absolute; top: 16px; right: 16px;
