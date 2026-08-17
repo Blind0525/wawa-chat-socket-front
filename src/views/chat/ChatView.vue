@@ -368,7 +368,7 @@ async function wechatLoginAndChat(domain, wechatId, name, avatarUrl) {
     if (chatMsgs.value.length === 0) {
       chatMsgs.value.push({ type: 'text', text: '您好,请问有什么可以帮您?', mine: false })
     }
-    scrollToBottom()
+    scrollToBottom(true) // 进会话强制滚到底部,展示最新消息
     preloadMic() // 预获取麦克风,后续录音不再重复请求权限
   } catch (e) {
     console.error(e)

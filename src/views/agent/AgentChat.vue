@@ -309,7 +309,7 @@ async function agentInit() {
     // 进入会话标记已读
     chatMarkReadApi(sessionId).catch(e => console.log('标记已读失败', e.message))
     pageState.value = 'chat'
-    scrollToBottom()
+    scrollToBottom(true) // 进会话强制滚到底部,展示最新消息
     preloadMic()
   } catch (e) {
     console.error(e)
