@@ -233,6 +233,7 @@ let extraMediaStreams = []    // 通话用 getUserMedia 原生流(结束时统�
 let callTimerInterval = null
 let callSeconds = 0
 let pendingOffer = null       // 来电的 offer 信令 {sdp, from, callType}
+let recoverTimer = null       // ICE disconnected 恢复窗口(网络抖动不误挂断)
 let callRecordRef = null      // 当前通话记录消息引用(挂断后补时长)
 const callState = ref('idle')   // idle | calling | ringing | incall
 const callType = ref('video')   // audio | video
@@ -1065,14 +1066,7 @@ function rejectCall() {
 
 /** 挂断/取消 */
 function hangUpCall() {
-  // 【调试】确认取消按钮点击是否触发,定位后移除
-  if (callState.value === 'calling') alert('[调试] 取消按钮已点击,状态=' + callState.value)
-  try {
-    ws.send({ type: 'call', action: 'hangup', to: agentUserId, sessionId, duration: callTimer.value })
-    alert('[调试] hangup 信令已发')
-  } catch (e) {
-    alert('[调试] hangup 信令发送异常: ' + e.message)
-  }
+  ws.send({ type: 'call', action: 'hangup', to: agentUserId, sessionId, duration: callTimer.value })
   endCall()
 }
 
@@ -1137,8 +1131,6 @@ async function endCall() {
   stopCallTimer()
   if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
   callState.value = 'idle'
-  // 【调试】确认 callState 已置回 idle,定位后移除
-  if (callState.value === 'idle') alert('[调试] endCall 执行,callState=idle')
   pendingOffer = null
   // 重置摄像头状态
   cameraOn.value = true
