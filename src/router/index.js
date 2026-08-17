@@ -24,6 +24,12 @@ const router = createRouter({
       name: 'agentChat',
       component: () => import('@/views/agent/AgentChat.vue')
     },
+    // ===== 独立通话页(App 端 web-view 加载;微信/浏览器可直接打开)=====
+    {
+      path: '/call',
+      name: 'callView',
+      component: () => import('@/views/call/CallView.vue')
+    },
   ]
 })
 
