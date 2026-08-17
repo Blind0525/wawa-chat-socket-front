@@ -1065,6 +1065,8 @@ function rejectCall() {
 
 /** 挂断/取消 */
 function hangUpCall() {
+  // 【调试】确认取消按钮点击是否触发,定位后移除
+  if (callState.value === 'calling') alert('[调试] 取消按钮已点击,状态=' + callState.value)
   ws.send({ type: 'call', action: 'hangup', to: agentUserId, sessionId, duration: callTimer.value })
   endCall()
 }
