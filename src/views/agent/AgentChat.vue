@@ -432,34 +432,40 @@ function formatMsg(m) {
   }
 }
 
-/** 首次加载历史消息(后端分页,第 1 页) */
+/** 首次加载历史消息(后端时间正序分页:取最后一页=最新消息) */
 async function loadHistoryMessages() {
   if (!sessionId) return
   try {
     chatMarkReadApi(sessionId).catch(e => console.log('标记已读失败', e.message))
-    const res = await chatGetMessagesApi({ sessionId, page: { page: 1, size: 30 } })
+    const first = await chatGetMessagesApi({ sessionId, page: { page: 1, size: 30 } })
+    const pd0 = first.data || {}
+    const total = pd0.total || 0
+    const size = 30
+    const lastPage = Math.max(1, Math.ceil(total / size))
+    const res = lastPage === 1 ? first : await chatGetMessagesApi({ sessionId, page: { page: lastPage, size } })
     const pd = res.data || {}
     const list = pd.list || []
     chatMsgs.value = list.map(formatMsg).filter(Boolean)
-    historyPage = 1
-    historyHasMore = pd.total > list.length
+    historyPage = lastPage
+    historyHasMore = lastPage > 1
   } catch (e) {
     console.log('加载历史消息失败', e.message)
   }
 }
 
-/** 上滑触顶:加载更早的历史消息,插入列表头部并保持滚动位置 */
+/** 上滑触顶:加载更早的历史消息(前一页),插入列表头部并保持滚动位置 */
 async function loadOlderMessages() {
   if (!sessionId || historyLoading || !historyHasMore) return
   historyLoading = true
   const el = msgListRef.value
   const prevHeight = el ? el.scrollHeight : 0
   try {
-    const res = await chatGetMessagesApi({ sessionId, page: { page: historyPage + 1, size: 30 } })
+    const res = await chatGetMessagesApi({ sessionId, page: { page: historyPage - 1, size: 30 } })
     const older = ((res.data || {}).list || []).map(formatMsg).filter(Boolean)
     if (older.length > 0) {
       chatMsgs.value = older.concat(chatMsgs.value)
-      historyPage++
+      historyPage--
+      historyHasMore = historyPage > 1
       // 保持视口内容位置不变(不跳动)
       nextTick(() => {
         const el2 = msgListRef.value

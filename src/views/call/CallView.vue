@@ -25,16 +25,25 @@
 
     <!-- 通话中 -->
     <template v-else-if="callState === 'incall'">
-      <div class="call-videos" :class="{ 'call-pip-swapped': pipSwapped }">
-        <div id="remote-video" class="call-remote" @click="swapPip" @touchend.prevent="swapPip"></div>
-        <div id="local-video" v-if="callType === 'video'" class="call-local" @click="swapPip" @touchend.prevent="swapPip">
-          <!-- 静态 video:安卓微信X5对动态创建的video渲染MediaStream不稳定 -->
-          <video autoplay muted playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5" class="local-video-el"></video>
-          <!-- 本地渲染失败时的占位(摄像头工作正常,仅X5无法本地预览) -->
-          <div class="local-placeholder">📷 摄像头已开启</div>
+      <!-- 视频通话:大画面 + 本地小窗 -->
+      <template v-if="callType === 'video'">
+        <div class="call-videos" :class="{ 'call-pip-swapped': pipSwapped }">
+          <div id="remote-video" class="call-remote" @click="swapPip" @touchend.prevent="swapPip"></div>
+          <div id="local-video" class="call-local" @click="swapPip" @touchend.prevent="swapPip">
+            <!-- 静态 video:安卓微信X5对动态创建的video渲染MediaStream不稳定 -->
+            <video autoplay muted playsinline webkit-playsinline x5-playsinline x5-video-player-type="h5" class="local-video-el"></video>
+            <!-- 本地渲染失败时的占位(摄像头工作正常,仅X5无法本地预览) -->
+            <div class="local-placeholder">📷 摄像头已开启</div>
+          </div>
         </div>
-      </div>
-      <div class="call-timer">{{ callTimer }}</div>
+        <div class="call-timer">{{ callTimer }}</div>
+      </template>
+      <!-- 语音通话:只显示名字 + 计时 + 挂断按钮(无小窗) -->
+      <template v-else>
+        <div class="call-avatar">📞</div>
+        <div class="call-title">{{ customerName || '顾客' }}</div>
+        <div class="call-subtitle">{{ callTimer }}</div>
+      </template>
       <div class="call-btns">
         <template v-if="callType === 'video'">
           <button class="call-btn call-ctrl" @click="switchCamera">翻转</button>
