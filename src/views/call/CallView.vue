@@ -99,12 +99,26 @@ export default {
   mounted() {
     this.init()
   },
+  watch: {
+    // 诊断:通话结束(含自动断开)时弹窗汇报,定位后移除
+    callState(v) {
+      if (v === 'ended' && this.diag) {
+        alert('[通话诊断] 状态=' + (this.diag.states || []).join('>')
+          + ' | 远端流=' + this.diag.remoteTracks
+          + ' | track=' + (this.diag.trackKinds || []).join(',')
+          + ' | 播放失败=' + this.diag.playFail
+          + ' | 结束原因=' + this.endText)
+      }
+    }
+  },
   beforeUnmount() {
     this.endCall()
     if (this.ws) { this.ws.close(); this.ws = null }
   },
   methods: {
     init() {
+      // 诊断收集器(定位通话问题,定位后移除)
+      this.diag = { states: [], remoteTracks: 0, trackKinds: [], playFail: 0 }
       const params = new URLSearchParams(window.location.search)
       this.sessionId = Number(params.get('sessionId')) || null
       this.peerUserId = params.get('peerId') || null
@@ -201,6 +215,10 @@ export default {
       this.pc.ontrack = (e) => {
         const remoteStream = e.streams[0]
         if (!remoteStream) return
+        // 诊断:记录远端流接收情况
+        this.diag.remoteTracks = (this.diag.remoteTracks || 0) + 1
+        this.diag.trackKinds = this.diag.trackKinds || []
+        e.track && this.diag.trackKinds.push(e.track.kind)
         const container = document.getElementById('remote-video')
         if (!container) return
         container.innerHTML = ''
@@ -227,6 +245,7 @@ export default {
           const p = v.play()
           if (p && p.catch) {
             p.catch(() => {
+              this.diag.playFail = (this.diag.playFail || 0) + 1
               container.classList.add('need-gesture')
             })
           } else {
@@ -249,6 +268,9 @@ export default {
       this.pc.onconnectionstatechange = () => {
         if (!this.pc) return
         const st = this.pc.connectionState
+        // 诊断:记录状态序列
+        this.diag.states = this.diag.states || []
+        this.diag.states.push(st)
         if (st === 'failed') {
           this.endText = '连接已断开'
           this.endCall()

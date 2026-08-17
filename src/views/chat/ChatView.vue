@@ -878,8 +878,26 @@ function createPeer() {
   }
 
   pc.onconnectionstatechange = () => {
-    if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'disconnected')) {
+    if (!pc) return
+    const st = pc.connectionState
+    if (st === 'failed') {
       endCall()
+      callState.value = 'idle'
+      alert('[通话诊断] 连接失败 failed')
+    } else if (st === 'disconnected') {
+      // 网络抖动:给 8 秒恢复窗口,避免误挂断
+      if (!recoverTimer) {
+        recoverTimer = setTimeout(() => {
+          if (pc && pc.connectionState === 'disconnected') {
+            endCall()
+            callState.value = 'idle'
+            alert('[通话诊断] 8秒未恢复,已断开 disconnected')
+          }
+          recoverTimer = null
+        }, 8000)
+      }
+    } else if (st === 'connected') {
+      if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
     }
   }
   return pc
@@ -1097,6 +1115,7 @@ function toggleCamera() {
 /** 结束通话(清理 RTCPeerConnection + 媒体流,并给通话记录补时长) */
 async function endCall() {
   stopCallTimer()
+  if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
   callState.value = 'idle'
   pendingOffer = null
   // 重置摄像头状态
