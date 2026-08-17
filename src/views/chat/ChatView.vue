@@ -1002,6 +1002,11 @@ async function startCall(type) {
   try {
     createPeer()
     const media = await getCallMedia()
+    // 取消保护:等待媒体期间用户点了取消,立即中止不再发 invite
+    if (callState.value !== 'calling') {
+      endCall()
+      return
+    }
     localStream = media.stream
     localVideoStream = media.videoStream
     // 先 addTrack 发送,再渲染本地预览(当初客服端能正常显示的时序)
@@ -1009,7 +1014,9 @@ async function startCall(type) {
     if (callType.value === 'video') showLocalPreview(localStream)
 
     const offer = await pc.createOffer()
+    if (callState.value !== 'calling') { endCall(); return }
     await pc.setLocalDescription(offer)
+    if (callState.value !== 'calling') { endCall(); return }
     ws.send({ type: 'call', action: 'invite', to: agentUserId, sessionId, callType: type, sdp: pc.localDescription })
   } catch (e) {
     console.error('发起通话失败', e)
@@ -1025,6 +1032,11 @@ async function acceptCall() {
   try {
     createPeer()
     const media = await getCallMedia()
+    // 取消保护:等待媒体期间通话已结束,中止
+    if (callState.value !== 'incall' && callState.value !== 'ringing') {
+      endCall()
+      return
+    }
     localStream = media.stream
     localVideoStream = media.videoStream
     // 先 addTrack 发送,再渲染本地预览(当初客服端能正常显示的时序)
@@ -1034,6 +1046,7 @@ async function acceptCall() {
     if (pendingOffer && pendingOffer.sdp) {
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.sdp))
     }
+    if (callState.value === 'ended' || callState.value === 'idle') { endCall(); return }
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     ws.send({ type: 'call', action: 'accept', to: pendingOffer.from || agentUserId, sessionId, sdp: pc.localDescription })
