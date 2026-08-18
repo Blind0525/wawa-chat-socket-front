@@ -557,20 +557,68 @@ function pickImage() {
   if (imageInputRef.value) imageInputRef.value.click()
 }
 
+/**
+ * 压缩图片并转 JPEG(对齐 App 端 compressImage):
+ *  - 最大边 2048,quality 0.8,一般可压到几百 KB
+ *  - 转 JPEG 解决 iOS 拍照 HEIC 原图浏览器/对方显示不了的问题
+ *  - 减小体积,规避微信内置浏览器 XHR 上传较大文件失败的问题
+ * 压缩失败/异常时返回原图,不影响发送
+ */
+function compressImage(file, maxSize = 2048, quality = 0.8) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        try {
+          let { width, height } = img
+          if (width > maxSize || height > maxSize) {
+            const ratio = Math.min(maxSize / width, maxSize / height)
+            width = Math.round(width * ratio)
+            height = Math.round(height * ratio)
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+          URL.revokeObjectURL(url)
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const name = (file.name || 'image').replace(/\.[^.]+$/, '') + '.jpg'
+              resolve(new File([blob], name, { type: 'image/jpeg' }))
+            } else {
+              resolve(file) // toBlob 返回 null(内存不足等),退回原图
+            }
+          }, 'image/jpeg', quality)
+        } catch (err) {
+          URL.revokeObjectURL(url)
+          resolve(file)
+        }
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+      img.src = url
+    } catch (err) {
+      resolve(file)
+    }
+  })
+}
+
 async function onImageSelected(e) {
   const file = e.target.files[0]
   if (!file || !peerUserId) return
   e.target.value = ''
 
+  const uploadFile = await compressImage(file) // 压缩转 JPEG 后上传(微信 XHR/HEIC 兼容)
+
   const localId = genLocalId()
   chatMsgs.value.push({
-    localId, type: 'image', url: URL.createObjectURL(file), mine: true,
+    localId, type: 'image', url: URL.createObjectURL(uploadFile), mine: true,
     time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
     day: formatDay(new Date())
   })
   scrollToBottom()
 
-  await uploadAndSend(file, 'image', { localId })
+  await uploadAndSend(uploadFile, 'image', { localId })
 }
 
 // ===== 发送视频 =====
