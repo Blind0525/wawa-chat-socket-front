@@ -23,8 +23,7 @@ export async function chatGetMessagesApi(data) {
 }
 
 /** 上传聊天文件(图片/视频/文件/语音),返回 {url, fileName, fileSize}
- *  注意:不能手动设置 Content-Type!axios 会自动生成带 boundary 的 multipart 头,
- *  手动设置会丢失 boundary,后端 Spring 解析 multipart 失败(500) */
+ *  注意:不要手动设置 Content-Type——axios 对 FormData 会自动生成带 boundary 的 multipart 头 */
 export async function chatUploadFileApi(file) {
     const formData = new FormData()
     formData.append('file', file)

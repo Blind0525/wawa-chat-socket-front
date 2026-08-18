@@ -506,16 +506,36 @@ async function sendMsg() {
 }
 
 // ===== 上传文件并发送媒体消息 =====
+/** 等 ws 重连就绪(上传耗时长,期间 ws 可能断开;30 秒超时) */
+function waitWsReady(timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    if (wsConnected.value) return resolve(true)
+    const start = Date.now()
+    const t = setInterval(() => {
+      if (wsConnected.value) { clearInterval(t); resolve(true) }
+      else if (Date.now() - start > timeoutMs) { clearInterval(t); resolve(false) }
+    }, 500)
+  })
+}
+
 async function uploadAndSend(file, msgType, extra) {
   try {
     const up = await chatUploadFileApi(file)
-    const d = up.data || up
+    // 响应拦截器返回整个 response:up = {code:200, message, data:{url,...}}
+    // 必须取 up.data.data,否则 d.url 是 undefined(上传成功但消息带空 url,图片发不出来)
+    const d = (up.data && up.data.data) || up.data || up
     // 上传成功立即用真实 Minio URL 替换本地 blob 预览(不等 ws ack,避免 ack 丢失后刷新裂图)
     if (extra && extra.localId) {
       const idx = chatMsgs.value.findIndex(m => m.localId === extra.localId)
       if (idx >= 0 && chatMsgs.value[idx].url && chatMsgs.value[idx].url.startsWith('blob:')) {
         chatMsgs.value[idx].url = d.url
       }
+    }
+    // 上传耗时期间 ws 可能断开:等重连就绪再发,避免消息丢失(chat_message 没记录)
+    const ok = await waitWsReady()
+    if (!ok) {
+      alert('连接已断开,消息发送失败,请重试')
+      return
     }
     ws.send(Object.assign({
       type: msgType,

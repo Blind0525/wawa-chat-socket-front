@@ -582,7 +582,9 @@ function waitWsReady(timeoutMs = 30000) {
 async function uploadAndSend(file, msgType, extra) {
   try {
     const up = await chatUploadFileApi(file)
-    const d = up.data || up
+    // 响应拦截器返回整个 response:up = {code:200, message, data:{url,...}}
+    // 必须取 up.data.data,否则 d.url 是 undefined(上传成功但消息带空 url,图片发不出来)
+    const d = (up.data && up.data.data) || up.data || up
     // 上传成功立即用真实 Minio URL 替换本地 blob 预览(不等 ws ack,避免 ack 丢失后刷新裂图)
     if (extra && extra.localId) {
       const idx = chatMsgs.value.findIndex(m => m.localId === extra.localId)
