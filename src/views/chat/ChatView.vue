@@ -567,6 +567,18 @@ async function sendMsg() {
 }
 
 // ===== 上传文件并发送媒体消息 =====
+/** 等 ws 重连就绪(上传耗时长,期间 ws 可能断开;30 秒超时) */
+function waitWsReady(timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    if (wsConnected.value) return resolve(true)
+    const start = Date.now()
+    const t = setInterval(() => {
+      if (wsConnected.value) { clearInterval(t); resolve(true) }
+      else if (Date.now() - start > timeoutMs) { clearInterval(t); resolve(false) }
+    }, 500)
+  })
+}
+
 async function uploadAndSend(file, msgType, extra) {
   try {
     const up = await chatUploadFileApi(file)
@@ -579,6 +591,12 @@ async function uploadAndSend(file, msgType, extra) {
         // URL 替换后重新加载远程图片
         chatMsgs.value[idx].imgState = 'loading'
       }
+    }
+    // 上传耗时期间 ws 可能断开:等重连就绪再发,避免消息丢失(chat_message 没记录)
+    const ok = await waitWsReady()
+    if (!ok) {
+      alert('连接已断开,消息发送失败,请重试')
+      return
     }
     ws.send(Object.assign({
       type: msgType,
