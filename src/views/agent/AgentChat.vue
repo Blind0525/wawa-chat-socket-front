@@ -41,7 +41,7 @@
             <div v-if="msg.type === 'text'" class="cs-bubble">{{ msg.text }}</div>
             <!-- 图片消息 -->
             <div v-else-if="msg.type === 'image'" class="cs-bubble cs-image-bubble" @click="openPreview('image', msg.url)">
-              <img :src="msg.url" class="cs-image-preview" alt="图片" @load="scrollToBottom" />
+              <img :src="msg.url" class="cs-image-preview" alt="图片" @load="onImgLoaded" />
             </div>
             <!-- 视频消息 -->
             <div v-else-if="msg.type === 'video'" class="cs-bubble cs-video-bubble" @click="openPreview('video', msg.url)">
@@ -368,6 +368,14 @@ function scrollToBottom(force) {
       el.scrollTop = el.scrollHeight
     }
   })
+}
+
+/** 图片加载撑开高度后,若仍在底部附近则跟随滚到底(否则进会话时最新消息是图片会停在半空) */
+function onImgLoaded() {
+  const el = msgListRef.value
+  if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
+    el.scrollTop = el.scrollHeight
+  }
 }
 
 /** Date -> 日期分隔文案(今天/昨天/具体日期) */

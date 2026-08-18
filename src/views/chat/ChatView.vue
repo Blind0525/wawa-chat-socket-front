@@ -911,6 +911,11 @@ function formatFileSize(bytes) {
 // ===== 图片加载状态 =====
 function onImgLoaded(msg) {
   msg.imgState = 'ok'
+  // 图片加载撑开高度后,若仍在底部附近则跟随滚到底(否则进会话时最新消息是图片会停在半空)
+  const el = msgListRef.value
+  if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
+    el.scrollTop = el.scrollHeight
+  }
 }
 function onImgError(msg) {
   msg.imgState = 'error'
