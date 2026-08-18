@@ -41,7 +41,9 @@
             <div v-if="msg.type === 'text'" class="cs-bubble">{{ msg.text }}</div>
             <!-- 图片消息 -->
             <div v-else-if="msg.type === 'image'" class="cs-bubble cs-image-bubble" @click="openPreview('image', msg.url)">
-              <img :src="msg.url" class="cs-image-preview" alt="图片" @load="scrollToBottom" />
+              <img :src="msg.url" class="cs-image-preview" alt="图片" @load="onImgLoaded(msg)" @error="onImgError(msg)" />
+              <div v-if="msg.imgState === 'loading'" class="cs-img-mask">图片加载中...</div>
+              <div v-else-if="msg.imgState === 'error'" class="cs-img-mask cs-img-error" @click.stop="retryImg(msg)">图片加载失败,点击重试</div>
             </div>
             <!-- 视频消息 -->
             <div v-else-if="msg.type === 'video'" class="cs-bubble cs-video-bubble" @click="openPreview('video', msg.url)">
@@ -400,6 +402,8 @@ function connectWs() {
         // 媒体消息:上传成功后用真实 url 替换 blob 预览
         if (data.fileUrl && chatMsgs.value[idx].url && chatMsgs.value[idx].url.startsWith('blob:')) {
           chatMsgs.value[idx].url = data.fileUrl
+          // URL 替换后重新加载远程图片
+          chatMsgs.value[idx].imgState = 'loading'
         }
       }
     },
@@ -461,7 +465,7 @@ function formatMsg(m) {
     case 'TEXT':
       return { ...base, type: 'text', text: m.content || '' }
     case 'IMAGE':
-      return { ...base, type: 'image', url: m.fileUrl || m.content || '' }
+      return { ...base, type: 'image', url: m.fileUrl || m.content || '', imgState: 'loading' }
     case 'VIDEO':
       return { ...base, type: 'video', url: m.fileUrl || m.content || '' }
     case 'FILE':
@@ -572,6 +576,8 @@ async function uploadAndSend(file, msgType, extra) {
       const idx = chatMsgs.value.findIndex(m => m.localId === extra.localId)
       if (idx >= 0 && chatMsgs.value[idx].url && chatMsgs.value[idx].url.startsWith('blob:')) {
         chatMsgs.value[idx].url = d.url
+        // URL 替换后重新加载远程图片
+        chatMsgs.value[idx].imgState = 'loading'
       }
     }
     ws.send(Object.assign({
@@ -601,7 +607,7 @@ async function onImageSelected(e) {
 
   const localId = genLocalId()
   chatMsgs.value.push({
-    localId, type: 'image', url: URL.createObjectURL(file), mine: true,
+    localId, type: 'image', url: URL.createObjectURL(file), mine: true, imgState: 'loading',
     time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
     day: formatDay(new Date())
   })
@@ -832,6 +838,23 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// ===== 图片加载状态 =====
+function onImgLoaded(msg) {
+  msg.imgState = 'ok'
+}
+function onImgError(msg) {
+  msg.imgState = 'error'
+}
+/** 加载失败点击重试(重新赋值 src 触发加载) */
+function retryImg(msg) {
+  msg.imgState = 'loading'
+  const url = msg.url
+  msg.url = ''
+  nextTick(() => {
+    msg.url = url
+  })
 }
 
 function genLocalId() {
@@ -1417,6 +1440,15 @@ onUnmounted(() => {
   max-width: 200px; max-height: 200px; border-radius: 6px;
   display: block; cursor: pointer;
 }
+/* 图片加载占位 */
+.cs-image-bubble { position: relative; }
+.cs-img-mask {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  background: #e8e8e8; color: #999; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+}
+.cs-img-mask.cs-img-error { background: rgba(0,0,0,0.45); color: #fff; }
 /* 视频消息气泡 */
 .cs-video-bubble {
   position: relative; padding: 4px; background: transparent; cursor: pointer;

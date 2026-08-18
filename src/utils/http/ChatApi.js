@@ -22,12 +22,13 @@ export async function chatGetMessagesApi(data) {
     return response.data
 }
 
-/** 上传聊天文件(图片/视频/文件/语音),返回 {url, fileName, fileSize} */
+/** 上传聊天文件(图片/视频/文件/语音),返回 {url, fileName, fileSize};上传单独放宽超时(默认20s经隧道传大图不够) */
 export async function chatUploadFileApi(file) {
     const formData = new FormData()
     formData.append('file', file)
     const response = await chatAxiosInstance.post('/file/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000
     })
     return response.data
 }
