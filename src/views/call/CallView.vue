@@ -16,7 +16,7 @@
     <!-- 呼叫中 -->
     <template v-else-if="callState === 'calling'">
       <div class="call-avatar">{{ callType === 'video' ? '📹' : '📞' }}</div>
-      <div class="call-title">正在呼叫...</div>
+      <div class="call-title">正在呼叫中...</div>
       <div class="call-subtitle">{{ callType === 'video' ? '视频通话' : '语音通话' }}</div>
       <div class="call-btns">
         <button class="call-btn call-hangup" @click="hangUpCall">取 消</button>
@@ -36,7 +36,7 @@
             <div class="local-placeholder">📷 摄像头已开启</div>
           </div>
         </div>
-        <div class="call-timer">{{ callTimer }}</div>
+        <div class="call-timer">{{ callConnected ? callTimer : '正在呼叫中...' }}</div>
       </template>
       <!-- 语音通话:只显示名字 + 计时 + 挂断按钮(无小窗) -->
       <template v-else>
@@ -44,7 +44,7 @@
         <div id="remote-video" style="display:none"></div>
         <div class="call-avatar">📞</div>
         <div class="call-title">{{ customerName || '顾客' }}</div>
-        <div class="call-subtitle">{{ callTimer }}</div>
+        <div class="call-subtitle">{{ callConnected ? callTimer : '正在呼叫中...' }}</div>
       </template>
       <div class="call-btns">
         <template v-if="callType === 'video'">
@@ -89,6 +89,7 @@ export default {
       callState: 'idle',     // idle | calling | ringing | incall | ended
       callType: 'video',
       callTimer: '00:00',
+      callConnected: false,  // ICE 打洞成功(connected)才进入计时;之前显示"正在呼叫中"
       endText: '通话已结束',
       cameraOn: true,
       pipSwapped: false,
@@ -180,7 +181,7 @@ export default {
               console.error('setRemoteDescription(accept) 失败', e)
             }
             this.callState = 'incall'
-            this.startCallTimer()
+            // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
             this.startConnectCheck()
           }
           break
@@ -309,6 +310,11 @@ export default {
         } else if (st === 'connected') {
           if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
           if (this.connectCheckTimer) { clearTimeout(this.connectCheckTimer); this.connectCheckTimer = null }
+          // 打洞成功:进入计时
+          if (!this.callConnected) {
+            this.callConnected = true
+            this.startCallTimer()
+          }
         }
       }
       return this.pc
@@ -405,7 +411,7 @@ export default {
       if (!this.wsConnected || !this.peerUserId || this.callState !== 'idle') return
       this.callType = type
       this.callState = 'calling'
-      this.startCallTimer()
+      // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
       try {
         this.createPeer()
         const media = await this.getCallMedia()
@@ -429,7 +435,7 @@ export default {
 
     async acceptCall() {
       this.callState = 'incall'
-      this.startCallTimer()
+      // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
       this.startConnectCheck()
       try {
         this.createPeer()
@@ -518,7 +524,7 @@ export default {
       tracks.forEach(t => { t.enabled = this.cameraOn })
     },
 
-    /** 进入通话状态后 20 秒内媒体连接未建立才判定失败(v1.0.0 无此检查能通,5秒检查砍断了慢速ICE建立,放宽到20秒只兜底真死锁) */
+    /** 进入通话状态后 60 秒内未接通才判定失败:弹窗"用户未接通,请稍后再试" */
     startConnectCheck() {
       if (this.connectCheckTimer) clearTimeout(this.connectCheckTimer)
       this.connectCheckTimer = setTimeout(() => {
@@ -526,17 +532,19 @@ export default {
         if (!this.pc) return
         const st = this.pc.connectionState
         if (st === 'connected') return
-        console.log('[call] 20秒未连上,当前状态:', st)
-        this.endText = '网络波动异常,未连接上'
+        console.log('[call] 60秒未接通,当前状态:', st)
+        this.endText = '用户未接通,请稍后再试'
         try { this.wsSend({ type: 'call', action: 'hangup', to: this.peerUserId, sessionId: this.sessionId, duration: this.callTimer }) } catch (e) { /* ignore */ }
         this.endCall()
         this.callState = 'ended'
-      }, 20000)
+        alert('用户未接通,请稍后再试')
+      }, 60000)
     },
 
     /** 结束通话(清理 RTCPeerConnection + 媒体流) */
     endCall() {
       this.stopCallTimer()
+      this.callConnected = false
       if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
       if (this.connectCheckTimer) { clearTimeout(this.connectCheckTimer); this.connectCheckTimer = null }
       this.pendingOffer = null

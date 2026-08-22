@@ -180,7 +180,7 @@
     <!-- 呼叫中 -->
     <template v-else-if="callState === 'calling'">
       <div class="cs-call-avatar">{{ callType === 'video' ? '📹' : '📞' }}</div>
-      <div class="cs-call-title">正在呼叫客服...</div>
+      <div class="cs-call-title">正在呼叫中...</div>
       <div class="cs-call-subtitle">{{ callType === 'video' ? '视频通话' : '语音通话' }}</div>
       <div class="cs-call-btns">
         <button class="cs-call-btn cs-call-hangup" @click="hangUpCall">取 消</button>
@@ -198,7 +198,7 @@
           <div class="cs-local-placeholder">📷 摄像头已开启</div>
         </div>
       </div>
-      <div class="cs-call-timer">{{ callTimer }}</div>
+      <div class="cs-call-timer">{{ callConnected ? callTimer : '正在呼叫中...' }}</div>
       <div class="cs-call-btns">
         <template v-if="callType === 'video'">
           <button class="cs-call-btn cs-call-ctrl" @click="switchCamera">翻转</button>
@@ -241,6 +241,7 @@ let callRecordRef = null      // 当前通话记录消息引用(挂断后补时�
 let connectCheckTimer = null  // 接听/发起后 N 秒未 connected 判定失败
 let diag = null               // 通话诊断收集器(定位后移除)
 const callState = ref('idle')   // idle | calling | ringing | incall
+const callConnected = ref(false) // ICE 打洞成功(connected)才进入计时;之前显示"正在呼叫中"
 const callType = ref('video')   // audio | video
 const callTimer = ref('00:00')
 const showCallMenu = ref(false) // 通话类型选择弹层
@@ -1020,6 +1021,12 @@ function createPeer() {
       }
     } else if (st === 'connected') {
       if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
+      if (connectCheckTimer) { clearTimeout(connectCheckTimer); connectCheckTimer = null }
+      // 打洞成功:进入计时
+      if (!callConnected.value) {
+        callConnected.value = true
+        startCallTimer()
+      }
     }
   }
   return pc
@@ -1124,7 +1131,7 @@ async function startCall(type) {
   if (!wsConnected.value || !agentUserId || callState.value !== 'idle') return
   callType.value = type
   callState.value = 'calling'
-  startCallTimer()
+  // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
 
   // 发起方本地也补一条通话记录(挂断时补时长;后端同时落库一条 SYSTEM 记录)
   callRecordRef = {
@@ -1171,7 +1178,7 @@ async function startCall(type) {
 /** 接听来电 */
 async function acceptCall() {
   callState.value = 'incall'
-  startCallTimer()
+  // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
   try {
     diag = { states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
     createPeer()
@@ -1271,7 +1278,7 @@ function toggleCamera() {
   tracks.forEach(t => { t.enabled = cameraOn.value })
 }
 
-/** 进入通话状态后 20 秒内媒体连接未建立才判定失败(v1.0.0 无此检查能通,5秒检查砍断了慢速ICE建立,放宽到20秒只兜底真死锁) */
+/** 进入通话状态后 60 秒内未接通才判定失败:弹窗"用户未接通,请稍后再试" */
 function startConnectCheck() {
   if (connectCheckTimer) clearTimeout(connectCheckTimer)
   connectCheckTimer = setTimeout(() => {
@@ -1279,15 +1286,16 @@ function startConnectCheck() {
     if (!pc) return
     const st = pc.connectionState
     if (st === 'connected') return
-    console.log('[call] 20秒未连上,当前状态:', st)
+    console.log('[call] 60秒未接通,当前状态:', st)
     endCall()
-    alert('[通话诊断] 20秒未连上,当前ICE状态=' + st)
-  }, 20000)
+    alert('用户未接通,请稍后再试')
+  }, 60000)
 }
 
 /** 结束通话(清理 RTCPeerConnection + 媒体流,并给通话记录补时长) */
 async function endCall() {
   stopCallTimer()
+  callConnected.value = false
   if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
   if (connectCheckTimer) { clearTimeout(connectCheckTimer); connectCheckTimer = null }
   callState.value = 'idle'
@@ -1362,7 +1370,7 @@ function handleCallMessage(payload) {
           console.error('setRemoteDescription(accept) 失败', e)
         }
         callState.value = 'incall'
-        startCallTimer()
+        // 打洞成功前不计时(界面显示"正在呼叫中"),connected 后才 startCallTimer
       }
       break
     case 'reject':
