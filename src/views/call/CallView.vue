@@ -182,6 +182,7 @@ export default {
             }
             this.callState = 'incall'
             this.startCallTimer()
+            this.startConnectCheck()
           }
           break
         case 'reject':
@@ -293,6 +294,7 @@ export default {
           }
         } else if (st === 'connected') {
           if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
+          if (this.connectCheckTimer) { clearTimeout(this.connectCheckTimer); this.connectCheckTimer = null }
         }
       }
       return this.pc
@@ -395,6 +397,7 @@ export default {
     async acceptCall() {
       this.callState = 'incall'
       this.startCallTimer()
+      this.startConnectCheck()
       try {
         this.createPeer()
         const media = await this.getCallMedia()
@@ -481,10 +484,27 @@ export default {
       tracks.forEach(t => { t.enabled = this.cameraOn })
     },
 
+    /** 进入通话状态后 5 秒内媒体连接未建立,判定连接失败(网络波动/直连失败) */
+    startConnectCheck() {
+      if (this.connectCheckTimer) clearTimeout(this.connectCheckTimer)
+      this.connectCheckTimer = setTimeout(() => {
+        this.connectCheckTimer = null
+        if (!this.pc) return
+        const st = this.pc.connectionState
+        if (st === 'connected') return
+        console.log('[call] 5秒未连上,当前状态:', st)
+        this.endText = '网络波动异常,未连接上'
+        try { this.wsSend({ type: 'call', action: 'hangup', to: this.peerUserId, sessionId: this.sessionId, duration: this.callTimer }) } catch (e) { /* ignore */ }
+        this.endCall()
+        this.callState = 'ended'
+      }, 5000)
+    },
+
     /** 结束通话(清理 RTCPeerConnection + 媒体流) */
     endCall() {
       this.stopCallTimer()
       if (this.recoverTimer) { clearTimeout(this.recoverTimer); this.recoverTimer = null }
+      if (this.connectCheckTimer) { clearTimeout(this.connectCheckTimer); this.connectCheckTimer = null }
       this.pendingOffer = null
       this.cameraOn = true
       this.pipSwapped = false
