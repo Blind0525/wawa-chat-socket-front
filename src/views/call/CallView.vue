@@ -94,6 +94,7 @@ export default {
       cameraOn: true,
       pipSwapped: false,
       wsConnected: false,
+      extraMediaStreams: [],  // 通话用 getUserMedia 原生流(结束时统一释放)
     }
   },
   mounted() {
