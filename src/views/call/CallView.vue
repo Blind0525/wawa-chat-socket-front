@@ -70,13 +70,8 @@
 <script>
 import { ChatSocket } from '@/utils/ws'
 
-// STUN 用于 NAT 打洞;TURN 作为中继兜底(跨网络直连失败时走服务器中转,否则无声音/15秒自动挂)
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'turn:47.94.216.161:3479?transport=udp', username: 'chat', credential: 'ChatTurn2026' }
-  ]
-}
+// 临时:去掉 TURN(安全组未放行 3479,不可达 TURN 可能拖死 ICE);放行后恢复
+const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 
 /**
  * 独立通话页:从 AgentChat.vue 抽出(原生 WebRTC + ws 信令)
