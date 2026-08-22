@@ -70,8 +70,13 @@
 <script>
 import { ChatSocket } from '@/utils/ws'
 
-// 临时:去掉 TURN(安全组未放行 3479,不可达 TURN 可能拖死 ICE);放行后恢复
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+// STUN 打洞 + TURN 中继(跨网络直连失败时走服务器中转);安全组需放行 47.94.216.161:3479(TCP+UDP)
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:47.94.216.161:3479?transport=udp', username: 'chat', credential: 'ChatTurn2026' }
+  ]
+}
 
 /**
  * 独立通话页:从 AgentChat.vue 抽出(原生 WebRTC + ws 信令)
@@ -102,10 +107,14 @@ export default {
     // 诊断:通话结束(含自动断开)时弹窗汇报,定位后移除
     callState(v) {
       if (v === 'ended' && this.diag) {
-        alert('[通话诊断] 状态=' + (this.diag.states || []).join('>')
+        alert('[通话诊断] ' + (this.diag.role || '')
+          + ' | 状态=' + (this.diag.states || []).join('>')
+          + ' | gathering=' + (this.diag.gathering || '')
+          + ' | 发cand=' + this.diag.candSend
+          + ' | 收cand=' + this.diag.candRecv
+          + ' | 早到cand=' + this.diag.candEarly
+          + ' | cand失败=' + this.diag.candFail
           + ' | 远端流=' + this.diag.remoteTracks
-          + ' | track=' + (this.diag.trackKinds || []).join(',')
-          + ' | 播放失败=' + this.diag.playFail
           + ' | 结束原因=' + this.endText)
       }
     }
@@ -117,7 +126,7 @@ export default {
   methods: {
     init() {
       // 诊断收集器(定位通话问题,定位后移除)
-      this.diag = { states: [], remoteTracks: 0, trackKinds: [], playFail: 0 }
+      this.diag = { role: this.mode === 'outgoing' ? '主叫' : '被叫', states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
       const params = new URLSearchParams(window.location.search)
       this.sessionId = Number(params.get('sessionId')) || null
       this.peerUserId = params.get('peerId') || null
@@ -188,8 +197,18 @@ export default {
           }
           break
         case 'candidate':
-          if (this.pc && payload.candidate) {
-            this.pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(e => console.error('addIceCandidate 失败', e))
+          if (payload.candidate) {
+            this.diag.candRecv = (this.diag.candRecv || 0) + 1
+            if (!this.pc || !this.pc.remoteDescription) {
+              // 远端候选早于 setRemoteDescription 到达:早期到达的候选可能丢失(微信X5内核不缓冲)
+              this.diag.candEarly = (this.diag.candEarly || 0) + 1
+            }
+            if (this.pc && payload.candidate) {
+              this.pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(e => {
+                this.diag.candFail = (this.diag.candFail || 0) + 1
+                console.error('addIceCandidate 失败', e)
+              })
+            }
           }
           break
         case 'hangup':
@@ -208,8 +227,12 @@ export default {
 
       this.pc.onicecandidate = (e) => {
         if (e.candidate && this.peerUserId) {
+          this.diag.candSend = (this.diag.candSend || 0) + 1
           this.wsSend({ type: 'call', action: 'candidate', to: this.peerUserId, sessionId: this.sessionId, candidate: e.candidate })
         }
+      }
+      this.pc.onicegatheringstatechange = () => {
+        if (this.pc) this.diag.gathering = this.pc.iceGatheringState
       }
 
       this.pc.ontrack = (e) => {
@@ -293,6 +316,21 @@ export default {
         }
       }
       return this.pc
+    },
+
+    /** setLocalDescription 后等待 ICE 候选收集完成,SDP 自带全部候选(不依赖 trickle 消息,规避微信内核候选丢失/时序问题) */
+    async waitGatheringComplete() {
+      if (!this.pc) return
+      if (this.pc.iceGatheringState === 'complete') return
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 3000) // 兜底:最多等 3 秒(STUN 查询慢时也能拿到 host 候选)
+        this.pc.onicegatheringstatechange = () => {
+          if (this.pc && this.pc.iceGatheringState === 'complete') {
+            clearTimeout(timer)
+            resolve()
+          }
+        }
+      })
     },
 
     /** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案) */
@@ -379,6 +417,7 @@ export default {
 
         const offer = await this.pc.createOffer()
         await this.pc.setLocalDescription(offer)
+        await this.waitGatheringComplete()
         this.wsSend({ type: 'call', action: 'invite', to: this.peerUserId, sessionId: this.sessionId, callType: type, sdp: this.pc.localDescription })
       } catch (e) {
         console.error('发起通话失败', e)
@@ -405,6 +444,7 @@ export default {
         }
         const answer = await this.pc.createAnswer()
         await this.pc.setLocalDescription(answer)
+        await this.waitGatheringComplete()
         this.wsSend({ type: 'call', action: 'accept', to: this.pendingOffer.from || this.peerUserId, sessionId: this.sessionId, sdp: this.pc.localDescription })
       } catch (e) {
         console.error('接听失败', e)
@@ -479,7 +519,7 @@ export default {
       tracks.forEach(t => { t.enabled = this.cameraOn })
     },
 
-    /** 进入通话状态后 5 秒内媒体连接未建立,判定连接失败(网络波动/直连失败) */
+    /** 进入通话状态后 8 秒内媒体连接未建立,判定连接失败(网络波动/直连失败) */
     startConnectCheck() {
       if (this.connectCheckTimer) clearTimeout(this.connectCheckTimer)
       this.connectCheckTimer = setTimeout(() => {
@@ -487,12 +527,12 @@ export default {
         if (!this.pc) return
         const st = this.pc.connectionState
         if (st === 'connected') return
-        console.log('[call] 5秒未连上,当前状态:', st)
+        console.log('[call] 8秒未连上,当前状态:', st)
         this.endText = '网络波动异常,未连接上'
         try { this.wsSend({ type: 'call', action: 'hangup', to: this.peerUserId, sessionId: this.sessionId, duration: this.callTimer }) } catch (e) { /* ignore */ }
         this.endCall()
         this.callState = 'ended'
-      }, 5000)
+      }, 8000)
     },
 
     /** 结束通话(清理 RTCPeerConnection + 媒体流) */

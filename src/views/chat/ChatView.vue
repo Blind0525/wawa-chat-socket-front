@@ -238,6 +238,8 @@ let callSeconds = 0
 let pendingOffer = null       // 来电的 offer 信令 {sdp, from, callType}
 let recoverTimer = null       // ICE disconnected 恢复窗口(网络抖动不误挂断)
 let callRecordRef = null      // 当前通话记录消息引用(挂断后补时长)
+let connectCheckTimer = null  // 接听/发起后 N 秒未 connected 判定失败
+let diag = null               // 通话诊断收集器(定位后移除)
 const callState = ref('idle')   // idle | calling | ringing | incall
 const callType = ref('video')   // audio | video
 const callTimer = ref('00:00')
@@ -247,10 +249,13 @@ const cameraOn = ref(true)      // 摄像头开关(视频通话中)
 const pipSwapped = ref(false)   // 小窗/大画面互换(点击小窗切换)
 const wsConnected = ref(false)  // 模板按钮禁用状态
 
-// STUN 用于 NAT 打洞;若打洞失败(复杂网络),在 iceServers 里加自建 TURN:
-// { urls: 'turn:your-turn-server:3478', username: 'user', credential: 'pass' }
-// 临时:去掉 TURN(安全组未放行 3479,不可达 TURN 可能拖死 ICE);放行后恢复
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+// STUN 打洞 + TURN 中继(跨网络直连失败时走服务器中转);安全组需放行 47.94.216.161:3479(TCP+UDP)
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:47.94.216.161:3479?transport=udp', username: 'chat', credential: 'ChatTurn2026' }
+  ]
+}
 
 // 微信授权后端入口(mer1.eguangchang.com 已在网页授权域名白名单)
 const WX_AUTH_URL = 'https://mer1.eguangchang.com/restful/oauth/authorize'
@@ -953,13 +958,18 @@ function createPeer() {
 
   pc.onicecandidate = (e) => {
     if (e.candidate && agentUserId) {
+      if (diag) diag.candSend = (diag.candSend || 0) + 1
       ws.send({ type: 'call', action: 'candidate', to: agentUserId, sessionId, candidate: e.candidate })
     }
+  }
+  pc.onicegatheringstatechange = () => {
+    if (pc && diag) diag.gathering = pc.iceGatheringState
   }
 
   pc.ontrack = (e) => {
     const remoteStream = e.streams[0]
     if (!remoteStream) return
+    if (diag) diag.remoteTracks = (diag.remoteTracks || 0) + 1
     const container = document.getElementById('remote-video')
     if (!container) return
     container.innerHTML = ''
@@ -988,10 +998,18 @@ function createPeer() {
   pc.onconnectionstatechange = () => {
     if (!pc) return
     const st = pc.connectionState
+    if (diag) { diag.states = diag.states || []; diag.states.push(st) }
     if (st === 'failed') {
       endCall()
       callState.value = 'idle'
-      alert('[通话诊断] 连接失败 failed')
+      alert('[通话诊断] 顾客端 | 状态=' + (diag ? (diag.states || []).join('>') : '')
+        + ' | gathering=' + (diag ? diag.gathering : '')
+        + ' | 发cand=' + (diag ? diag.candSend : 0)
+        + ' | 收cand=' + (diag ? diag.candRecv : 0)
+        + ' | 早到cand=' + (diag ? diag.candEarly : 0)
+        + ' | cand失败=' + (diag ? diag.candFail : 0)
+        + ' | 远端流=' + (diag ? diag.remoteTracks : 0)
+        + ' | 结束原因=连接失败failed')
     } else if (st === 'disconnected') {
       // 网络抖动:给 8 秒恢复窗口,避免误挂断
       if (!recoverTimer) {
@@ -1087,6 +1105,21 @@ function chooseCall(type) {
   startCall(type)
 }
 
+/** setLocalDescription 后等待 ICE 候选收集完成,SDP 自带全部候选(不依赖 trickle 消息,规避微信内核候选丢失/时序问题) */
+async function waitGatheringComplete() {
+  if (!pc) return
+  if (pc.iceGatheringState === 'complete') return
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 3000) // 兜底:最多等 3 秒(STUN 查询慢时也能拿到 host 候选)
+    pc.onicegatheringstatechange = () => {
+      if (pc && pc.iceGatheringState === 'complete') {
+        clearTimeout(timer)
+        resolve()
+      }
+    }
+  })
+}
+
 /** 发起通话(语音/视频) */
 async function startCall(type) {
   if (!wsConnected.value || !agentUserId || callState.value !== 'idle') return
@@ -1108,6 +1141,7 @@ async function startCall(type) {
   scrollToBottom()
 
   try {
+    diag = { states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
     createPeer()
     const media = await getCallMedia()
     // 取消保护:等待媒体期间用户点了取消,立即中止不再发 invite
@@ -1124,8 +1158,10 @@ async function startCall(type) {
     const offer = await pc.createOffer()
     if (callState.value !== 'calling') { endCall(); return }
     await pc.setLocalDescription(offer)
+    await waitGatheringComplete()
     if (callState.value !== 'calling') { endCall(); return }
     ws.send({ type: 'call', action: 'invite', to: agentUserId, sessionId, callType: type, sdp: pc.localDescription })
+    startConnectCheck()
   } catch (e) {
     console.error('发起通话失败', e)
     alert('通话建立失败: ' + (e.message || e))
@@ -1138,6 +1174,7 @@ async function acceptCall() {
   callState.value = 'incall'
   startCallTimer()
   try {
+    diag = { states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
     createPeer()
     const media = await getCallMedia()
     // 取消保护:等待媒体期间通话已结束,中止
@@ -1157,7 +1194,9 @@ async function acceptCall() {
     if (callState.value === 'ended' || callState.value === 'idle') { endCall(); return }
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
+    await waitGatheringComplete()
     ws.send({ type: 'call', action: 'accept', to: pendingOffer.from || agentUserId, sessionId, sdp: pc.localDescription })
+    startConnectCheck()
   } catch (e) {
     console.error('接听失败', e)
     alert('接听失败: ' + (e.message || e))
@@ -1233,10 +1272,25 @@ function toggleCamera() {
   tracks.forEach(t => { t.enabled = cameraOn.value })
 }
 
+/** 进入通话状态后 8 秒内媒体连接未建立,判定连接失败(网络波动/直连失败) */
+function startConnectCheck() {
+  if (connectCheckTimer) clearTimeout(connectCheckTimer)
+  connectCheckTimer = setTimeout(() => {
+    connectCheckTimer = null
+    if (!pc) return
+    const st = pc.connectionState
+    if (st === 'connected') return
+    console.log('[call] 8秒未连上,当前状态:', st)
+    endCall()
+    alert('[通话诊断] 8秒未连上,当前ICE状态=' + st)
+  }, 8000)
+}
+
 /** 结束通话(清理 RTCPeerConnection + 媒体流,并给通话记录补时长) */
 async function endCall() {
   stopCallTimer()
   if (recoverTimer) { clearTimeout(recoverTimer); recoverTimer = null }
+  if (connectCheckTimer) { clearTimeout(connectCheckTimer); connectCheckTimer = null }
   callState.value = 'idle'
   pendingOffer = null
   // 重置摄像头状态
@@ -1319,8 +1373,17 @@ function handleCallMessage(payload) {
       }
       break
     case 'candidate':
-      if (pc && payload.candidate) {
-        pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(e => console.error('addIceCandidate 失败', e))
+      if (payload.candidate) {
+        if (diag) {
+          diag.candRecv = (diag.candRecv || 0) + 1
+          if (!pc || !pc.remoteDescription) diag.candEarly = (diag.candEarly || 0) + 1
+        }
+        if (pc) {
+          pc.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(e => {
+            if (diag) diag.candFail = (diag.candFail || 0) + 1
+            console.error('addIceCandidate 失败', e)
+          })
+        }
       }
       break
     case 'hangup':
