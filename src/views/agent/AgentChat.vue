@@ -217,6 +217,7 @@ import { TOKEN } from '@/utils/CacheKey'
 
 // ===== 连接状态 =====
 let ws = null
+let visibilityHandler = null  // 页面回前台 ws 检测重连(微信切后台会杀 ws)
 let myUserId = null
 let peerUserId = null  // 对端用户(顾客)的登录ID
 let sessionId = null    // 会话 id(历史消息拉取用)
@@ -274,6 +275,15 @@ let audioChunks = []
 const preview = ref({ show: false, type: 'image', url: '' })
 
 onMounted(() => {
+  // 微信切后台会杀 WebSocket,回前台时检测并重连(否则收不到实时消息)
+  visibilityHandler = () => {
+    if (document.hidden) return
+    if (ws && ws.ws && ws.ws.readyState !== WebSocket.OPEN) {
+      console.log('[ws] 页面回前台,ws未连接,重连')
+      ws.connect()
+    }
+  }
+  document.addEventListener('visibilitychange', visibilityHandler)
   const auth = getCache(TOKEN)
   if (!auth || !auth.token) {
     // 未登录:回客服登录页
@@ -1235,6 +1245,10 @@ function stopCallTimer() {
 }
 
 onUnmounted(() => {
+  if (visibilityHandler) {
+    document.removeEventListener('visibilitychange', visibilityHandler)
+    visibilityHandler = null
+  }
   // 清理录音资源
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     try { mediaRecorder.stop() } catch (e) { /* ignore */ }
