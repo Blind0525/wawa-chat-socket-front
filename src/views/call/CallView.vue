@@ -240,36 +240,37 @@ export default {
         const container = document.getElementById('remote-video')
         if (!container) return
         container.innerHTML = ''
-        const v = document.createElement('video')
-        v.autoplay = true
-        v.playsInline = true
-        v.muted = false
-        v.setAttribute('playsinline', '')
-        v.style.width = '100%'
-        v.style.height = '100%'
-        v.style.pointerEvents = 'none'
-        try {
-          if ('srcObject' in v) {
-            v.srcObject = remoteStream
-          } else {
-            v.src = URL.createObjectURL(remoteStream)
-          }
-        } catch (e) {
+      const v = document.createElement('video')
+      v.autoplay = true
+      v.playsInline = true
+      v.muted = false
+      v.setAttribute('playsinline', '')
+      v.volume = 0.6  // 默认降音量防啸叫爆音(微信X5回声消除不可靠)
+      v.style.width = '100%'
+      v.style.height = '100%'
+      v.style.pointerEvents = 'none'
+      try {
+        if ('srcObject' in v) {
+          v.srcObject = remoteStream
+        } else {
           v.src = URL.createObjectURL(remoteStream)
         }
-        container.appendChild(v)
-        // 自动播放可能被无手势策略拦截(web-view 页面),失败时提示点击启用声音
-        const tryPlay = () => {
-          const p = v.play()
-          if (p && p.catch) {
-            p.catch(() => {
-              this.diag.playFail = (this.diag.playFail || 0) + 1
-              container.classList.add('need-gesture')
-            })
-          } else {
-            container.classList.remove('need-gesture')
-          }
+      } catch (e) {
+        v.src = URL.createObjectURL(remoteStream)
+      }
+      container.appendChild(v)
+      // 自动播放可能被无手势策略拦截(web-view 页面),失败时提示点击启用声音
+      const tryPlay = () => {
+        const p = v.play()
+        if (p && p.catch) {
+          p.catch(() => {
+            this.diag.playFail = (this.diag.playFail || 0) + 1
+            container.classList.add('need-gesture')
+          })
+        } else {
+          container.classList.remove('need-gesture')
         }
+      }
         v.onloadedmetadata = tryPlay
         setTimeout(tryPlay, 100)
         setTimeout(tryPlay, 500)
@@ -330,9 +331,9 @@ export default {
 
     /** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案) */
     async getCallMedia() {
-      // 显式开启回声消除/降噪/自动增益(微信X5内核默认可能关闭,外放时刺耳回声/啸叫)
+      // 显式开启回声消除/降噪(微信X5内核默认可能关闭,外放时刺耳回声/啸叫);不开自动增益(AGC会把啸叫越放越大)
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }
       })
       this.extraMediaStreams.push(stream)
       let videoStream = null
