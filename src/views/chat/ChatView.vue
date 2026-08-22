@@ -249,13 +249,8 @@ const cameraOn = ref(true)      // 摄像头开关(视频通话中)
 const pipSwapped = ref(false)   // 小窗/大画面互换(点击小窗切换)
 const wsConnected = ref(false)  // 模板按钮禁用状态
 
-// STUN 打洞 + TURN 中继(跨网络直连失败时走服务器中转);安全组需放行 47.94.216.161:3479(TCP+UDP)
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'turn:47.94.216.161:3479?transport=udp', username: 'chat', credential: 'ChatTurn2026' }
-  ]
-}
+// 纯 STUN(v1.0.0 能通配置);TURN 等服务器放行后再启用
+const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 
 // 微信授权后端入口(mer1.eguangchang.com 已在网页授权域名白名单)
 const WX_AUTH_URL = 'https://mer1.eguangchang.com/restful/oauth/authorize'
@@ -1272,7 +1267,7 @@ function toggleCamera() {
   tracks.forEach(t => { t.enabled = cameraOn.value })
 }
 
-/** 进入通话状态后 8 秒内媒体连接未建立,判定连接失败(网络波动/直连失败) */
+/** 进入通话状态后 20 秒内媒体连接未建立才判定失败(v1.0.0 无此检查能通,5秒检查砍断了慢速ICE建立,放宽到20秒只兜底真死锁) */
 function startConnectCheck() {
   if (connectCheckTimer) clearTimeout(connectCheckTimer)
   connectCheckTimer = setTimeout(() => {
@@ -1280,10 +1275,10 @@ function startConnectCheck() {
     if (!pc) return
     const st = pc.connectionState
     if (st === 'connected') return
-    console.log('[call] 8秒未连上,当前状态:', st)
+    console.log('[call] 20秒未连上,当前状态:', st)
     endCall()
-    alert('[通话诊断] 8秒未连上,当前ICE状态=' + st)
-  }, 8000)
+    alert('[通话诊断] 20秒未连上,当前ICE状态=' + st)
+  }, 20000)
 }
 
 /** 结束通话(清理 RTCPeerConnection + 媒体流,并给通话记录补时长) */
