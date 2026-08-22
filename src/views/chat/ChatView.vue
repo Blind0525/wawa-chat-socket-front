@@ -248,7 +248,12 @@ const wsConnected = ref(false)  // 模板按钮禁用状态
 
 // STUN 用于 NAT 打洞;若打洞失败(复杂网络),在 iceServers 里加自建 TURN:
 // { urls: 'turn:your-turn-server:3478', username: 'user', credential: 'pass' }
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:47.94.216.161:3479?transport=udp', username: 'chat', credential: 'ChatTurn2026' }
+  ]
+}
 
 // 微信授权后端入口(mer1.eguangchang.com 已在网页授权域名白名单)
 const WX_AUTH_URL = 'https://mer1.eguangchang.com/restful/oauth/authorize'
