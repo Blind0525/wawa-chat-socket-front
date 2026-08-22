@@ -122,6 +122,14 @@ export default {
   },
   methods: {
     init() {
+      // App web-view 内加载 uni 桥(提供 uni.postMessage 通知 App 关闭通话页);浏览器环境无害
+      if (!window.uni && document.createElement) {
+        try {
+          const s = document.createElement('script')
+          s.src = '/socket2/uni.webview.js'
+          document.head.appendChild(s)
+        } catch (e) { /* ignore */ }
+      }
       // 诊断收集器(定位通话问题,定位后移除)
       this.diag = { role: this.mode === 'outgoing' ? '主叫' : '被叫', states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
       const params = new URLSearchParams(window.location.search)
@@ -594,13 +602,20 @@ export default {
         this.callTimerInterval = null
       }
     },
-    /** 关闭页面:App 内由外层 web-view 的返回按钮处理;浏览器里直接返回历史 */
+    /** 关闭页面:App web-view 内通知 App 返回原生聊天页;浏览器里返回历史;兜底回客服会话列表(不跳登录) */
     closePage() {
+      // App web-view 环境(uni 桥可用):通知 App 关闭通话页返回聊天页
+      if (window.uni && window.uni.postMessage) {
+        try {
+          window.uni.postMessage({ data: { action: 'closeCall' } })
+          return
+        } catch (e) { /* ignore */ }
+      }
       if (window.history.length > 1) {
         window.history.back()
-      } else {
-        window.location.href = '/socket2/login'
+        return
       }
+      window.location.href = '/socket2/agent'
     },
   },
 }
