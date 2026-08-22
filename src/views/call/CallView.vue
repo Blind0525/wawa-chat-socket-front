@@ -330,7 +330,10 @@ export default {
 
     /** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案) */
     async getCallMedia() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 显式开启回声消除/降噪/自动增益(微信X5内核默认可能关闭,外放时刺耳回声/啸叫)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      })
       this.extraMediaStreams.push(stream)
       let videoStream = null
       if (this.callType === 'video') {

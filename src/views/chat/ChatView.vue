@@ -1027,7 +1027,10 @@ function createPeer() {
 /** 获取通话媒体流:音频单独 getUserMedia,视频通话再单独取摄像头 addTrack(微信兼容方案)
  *  返回 { stream: 发送用混合流, videoStream: 纯视频流(本地预览用,微信渲染混合流会黑屏) } */
 async function getCallMedia() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  // 显式开启回声消除/降噪/自动增益(微信X5内核默认可能关闭,外放时刺耳回声/啸叫)
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+  })
   extraMediaStreams.push(stream)
   let videoStream = null
   if (callType.value === 'video') {
