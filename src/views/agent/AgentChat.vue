@@ -1461,6 +1461,8 @@ onUnmounted(() => {
   display: flex; align-items: center; gap: 6px;
   max-width: 68%;
   white-space: nowrap;
+  min-width: 150px;  /* 通话记录气泡长一点 */
+  justify-content: center;
 }
 .cs-call-ico { font-size: 15px; }
 .cs-call-text { font-size: 14px; }
