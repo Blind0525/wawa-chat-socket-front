@@ -27,12 +27,6 @@
       <div v-for="(msg, i) in chatMsgs" :key="i" class="cs-msg" :class="[msg.mine ? 'cs-msg-right' : 'cs-msg-left', msg.type === 'call' ? 'cs-call-record' : '']">
         <!-- 日期分隔条 -->
         <div v-if="i === 0 || (msg.day || '今天') !== (chatMsgs[i - 1].day || '今天')" class="cs-date-divider">{{ msg.day || '今天' }}</div>
-        <!-- 通话记录（气泡样式） -->
-        <div v-else-if="msg.type === 'call'" class="cs-bubble cs-call-bubble">
-          <span class="cs-call-ico">{{ msg.callType === 'video' ? '📹' : '📞' }}</span>
-          <span class="cs-call-text">{{ msg.text }}</span>
-          <span v-if="msg.duration && msg.duration !== '00:00'" class="cs-call-dur">{{ msg.duration }}</span>
-        </div>
         <template v-else>
           <!-- 头像:后端给了头像显示图片,没有则文字兜底(自己=我/对方=客服) -->
           <div class="cs-avatar">
@@ -40,8 +34,14 @@
             <template v-else>{{ msg.mine ? '我' : '客服' }}</template>
           </div>
           <div class="cs-msg-main">
+            <!-- 通话记录（气泡样式） -->
+            <div v-if="msg.type === 'call'" class="cs-bubble cs-call-bubble">
+              <span class="cs-call-ico">{{ msg.callType === 'video' ? '📹' : '📞' }}</span>
+              <span class="cs-call-text">{{ msg.text }}</span>
+              <span v-if="msg.duration && msg.duration !== '00:00'" class="cs-call-dur">{{ msg.duration }}</span>
+            </div>
             <!-- 文本消息 -->
-            <div v-if="msg.type === 'text'" class="cs-bubble">{{ msg.text }}</div>
+            <div v-else-if="msg.type === 'text'" class="cs-bubble">{{ msg.text }}</div>
             <!-- 图片消息 -->
             <div v-else-if="msg.type === 'image'" class="cs-bubble cs-image-bubble" @click="openPreview('image', msg.url)">
               <img :src="msg.url" class="cs-image-preview" alt="图片" @load="onImgLoaded(msg)" @error="onImgError(msg)" />
@@ -1584,9 +1584,10 @@ onUnmounted(() => {
   color: #b2b2b2;
   margin: 6px 0 14px;
   width: 100%;
+  flex-basis: 100%;   /* flex 容器内独占一行,避免与消息并排 */
+  flex-shrink: 0;
 }
 /* 通话记录（左右对齐气泡，带尾巴） */
-.cs-call-record { padding: 0 48px; }
 .cs-call-bubble {
   display: flex; align-items: center; gap: 6px;
   max-width: 68%;
