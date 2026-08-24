@@ -290,6 +290,8 @@ onMounted(() => {
     if (ws && ws.ws && ws.ws.readyState !== WebSocket.OPEN) {
       console.log('[ws] 页面回前台,ws未连接,重连')
       ws.connect()
+      // 断线期间的消息会丢,重连后补拉最新一页(去重合并)
+      setTimeout(refreshLatestMessages, 800)
     }
   }
   document.addEventListener('visibilitychange', visibilityHandler)
@@ -527,6 +529,36 @@ async function loadHistoryMessages() {
     historyHasMore = historyPage > 1
   } catch (e) {
     console.log('加载历史消息失败', e.message)
+  }
+}
+
+/** 回前台补拉最新一页消息(断线期间的消息补上;按 id 去重合并) */
+async function refreshLatestMessages() {
+  if (!sessionId) return
+  try {
+    const size = 30
+    const first = await chatGetMessagesApi({ sessionId, page: { page: 1, size } })
+    const pd0 = first.data || {}
+    const total = pd0.total || 0
+    const pages = Math.max(1, Math.ceil(total / size))
+    const res = await chatGetMessagesApi({ sessionId, page: { page: pages, size } })
+    const list = ((res.data || {}).list || []).map(formatMsg).filter(Boolean)
+    if (list.length === 0) return
+    const haveIds = new Set(chatMsgs.value.map(m => m.id).filter(Boolean))
+    const merged = chatMsgs.value.slice()
+    let changed = false
+    list.forEach(m => {
+      if (m.id && !haveIds.has(m.id)) {
+        merged.push(m)
+        changed = true
+      }
+    })
+    if (changed) {
+      chatMsgs.value = merged
+      scrollToBottom(true)
+    }
+  } catch (e) {
+    console.log('补拉最新消息失败', e.message)
   }
 }
 
