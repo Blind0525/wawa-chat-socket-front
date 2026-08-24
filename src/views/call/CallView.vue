@@ -134,7 +134,7 @@ export default {
       this.diag = { role: this.mode === 'outgoing' ? '主叫' : '被叫', states: [], gathering: '', candSend: 0, candRecv: 0, candEarly: 0, candFail: 0, remoteTracks: 0 }
       const params = new URLSearchParams(window.location.search)
       this.sessionId = Number(params.get('sessionId')) || null
-      this.peerUserId = params.get('peerId') || null
+      this.peerUserId = this.safeDecodeURI(params.get('peerId') || null)
       this.token = params.get('token') || ''
       this.customerName = params.get('name') || ''
       this.callType = params.get('type') || 'video'
@@ -602,6 +602,20 @@ export default {
         this.callTimerInterval = null
       }
     },
+    /** URL 参数重复编码兜底解码(中文 tenant 名的 customerImId 可能被编码两次,解到不能再解) */
+    safeDecodeURI(s) {
+      if (!s || !s.includes('%')) return s
+      let r = s
+      for (let i = 0; i < 3; i++) {
+        try {
+          const d = decodeURIComponent(r)
+          if (d === r) break
+          r = d
+        } catch (e) { break }
+      }
+      return r
+    },
+
     /** 关闭页面:App web-view 内通知 App 返回原生聊天页;浏览器里返回历史;兜底回客服会话列表(不跳登录) */
     closePage() {
       // App web-view 环境(uni 桥可用):通知 App 关闭通话页返回聊天页

@@ -299,7 +299,7 @@ onMounted(() => {
 
   const params = new URLSearchParams(window.location.search)
   sessionId = Number(params.get('sessionId')) || null
-  peerUserId = params.get('peerId') || null
+  peerUserId = safeDecodeURI(params.get('peerId') || null)
   customerName.value = params.get('customerName') || ''
 
   if (!sessionId || !peerUserId) {
@@ -401,6 +401,20 @@ function formatDay(d) {
   const yest = new Date(now); yest.setDate(now.getDate() - 1)
   if (same(d, yest)) return '昨天'
   return (d.getMonth() + 1) + '月' + d.getDate() + '日'
+}
+
+/** URL 参数重复编码兜底解码(中文 tenant 名的 customerImId 可能被编码两次,解到不能再解) */
+function safeDecodeURI(s) {
+  if (!s || !s.includes('%')) return s
+  let r = s
+  for (let i = 0; i < 3; i++) {
+    try {
+      const d = decodeURIComponent(r)
+      if (d === r) break
+      r = d
+    } catch (e) { break }
+  }
+  return r
 }
 
 /** 返回上一页 */
