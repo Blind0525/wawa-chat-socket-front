@@ -1518,7 +1518,7 @@ onUnmounted(() => {
 }
 .cs-connecting { font-size: 12px; font-weight: 400; color: #999; position: absolute; right: 12px; }
 .cs-body { flex: 1; overflow-y: auto; padding: 12px 12px 20px; }
-.cs-msg { display: flex; align-items: flex-start; margin-bottom: 16px; }
+.cs-msg { display: flex; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
 .cs-msg-left { flex-direction: row; }
 .cs-msg-right { flex-direction: row-reverse; }
 /* 头像（微信圆角方形） */
