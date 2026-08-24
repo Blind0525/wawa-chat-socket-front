@@ -25,14 +25,13 @@
     </div>
     <div class="cs-body" ref="msgListRef" @scroll="onBodyScroll">
       <div v-for="(msg, i) in chatMsgs" :key="i" class="cs-msg" :class="[msg.mine ? 'cs-msg-right' : 'cs-msg-left', msg.type === 'call' ? 'cs-call-record' : '']">
-        <!-- 日期分隔条 -->
+        <!-- 日期分隔条(独占一行,消息内容总是渲染) -->
         <div v-if="i === 0 || (msg.day || '今天') !== (chatMsgs[i - 1].day || '今天')" class="cs-date-divider">{{ msg.day || '今天' }}</div>
-        <template v-else>
-          <!-- 头像:后端给了头像显示图片,没有则文字兜底(自己=我/对方=客服) -->
-          <div class="cs-avatar">
-            <img v-if="msg.avatar" :src="msg.avatar" class="cs-avatar-img" alt="" @error="msg.avatar = ''" />
-            <template v-else>{{ msg.mine ? '我' : '客服' }}</template>
-          </div>
+        <!-- 头像:后端给了头像显示图片,没有则文字兜底(自己=我/对方=客服) -->
+        <div class="cs-avatar">
+          <img v-if="msg.avatar" :src="msg.avatar" class="cs-avatar-img" alt="" @error="msg.avatar = ''" />
+          <template v-else>{{ msg.mine ? '我' : '客服' }}</template>
+        </div>
           <div class="cs-msg-main">
             <!-- 通话记录（气泡样式） -->
             <div v-if="msg.type === 'call'" class="cs-bubble cs-call-bubble">
@@ -76,7 +75,6 @@
             </div>
             <div v-if="msg.time" class="cs-time">{{ msg.time }}</div>
           </div>
-        </template>
       </div>
     </div>
     <div class="cs-input-bar">
