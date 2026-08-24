@@ -34,8 +34,11 @@
           <span v-if="msg.duration && msg.duration !== '00:00'" class="cs-call-dur">{{ msg.duration }}</span>
         </div>
         <template v-else>
-          <!-- 头像 -->
-          <div class="cs-avatar">{{ msg.mine ? '我' : '客' }}</div>
+          <!-- 头像:后端给了头像显示图片,没有则文字兜底(自己=我/对方=用户) -->
+          <div class="cs-avatar">
+            <img v-if="msg.avatar" :src="msg.avatar" class="cs-avatar-img" alt="" @error="msg.avatar = ''" />
+            <template v-else>{{ msg.mine ? '我' : '用户' }}</template>
+          </div>
           <div class="cs-msg-main">
             <!-- 文本消息 -->
             <div v-if="msg.type === 'text'" class="cs-bubble">{{ msg.text }}</div>
@@ -417,6 +420,7 @@ function formatMsg(m) {
   const time = m.createTime ? new Date(String(m.createTime).replace(' ', 'T')) : new Date()
   const base = {
     mine: m.senderImId === myUserId,
+    avatar: m.senderAvatar || '',
     time: time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
     day: formatDay(time)
   }
@@ -1400,6 +1404,8 @@ onUnmounted(() => {
 }
 .cs-msg-left .cs-avatar { background: #1677ff; }
 .cs-msg-right .cs-avatar { background: #b0b6bf; }
+/* 真实头像图片(有头像时显示,铺满圆形方形头像) */
+.cs-avatar-img { width: 100%; height: 100%; border-radius: 6px; display: block; }
 /* 消息主体 */
 .cs-msg-main {
   max-width: 68%;
